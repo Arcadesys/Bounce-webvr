@@ -390,11 +390,12 @@ export default function BounceScene() {
         sequencerId = Tone.Transport.scheduleRepeat((time) => {
           // Check if current step is active in the sequencer pattern
           if (dispenserMesh.userData.sequencerSteps[step]) {
-            // Create ball position at the BOTTOM of the dispenser with slight randomness
+            // Create ball position exactly at the BOTTOM of the dispenser
+            // No randomness, completely deterministic
             const ballPosition = new THREE.Vector3(
-              dispenserMesh.position.x + (Math.random() * 0.1 - 0.05), // Small X randomness
-              dispenserMesh.position.y - 0.35, // Bottom of dispenser (not top)
-              dispenserMesh.position.z + (Math.random() * 0.1 - 0.05)  // Small Z randomness
+              dispenserMesh.position.x, // Exact X position
+              dispenserMesh.position.y - 0.35, // Bottom of dispenser
+              0  // Force Z=0 for 2D physics
             );
             
             // Create the ball
@@ -447,12 +448,15 @@ export default function BounceScene() {
       // Get collision groups from ref
       const { BALL, ENVIRONMENT } = collisionGroupsRef.current;
       
+      // Force position to be in the 2D plane (z=0)
+      const positionIn2D = new THREE.Vector3(position.x, position.y, 0);
+      
       // Physics body
       const sphereShape = new CANNON.Sphere(radius);
       const sphereBody = new CANNON.Body({
         mass: mass,
         shape: sphereShape,
-        position: new CANNON.Vec3(position.x, position.y, position.z),
+        position: new CANNON.Vec3(positionIn2D.x, positionIn2D.y, positionIn2D.z),
         material: ballMaterial,
         linearDamping: 0.01, // Small damping for realistic physics
         angularDamping: 0.01, // Small angular damping too
@@ -460,19 +464,26 @@ export default function BounceScene() {
         collisionFilterMask: ENVIRONMENT // Set which groups this body can collide with (only environment, not other balls)
       });
       
-      // Add initial velocity with slight randomness for more natural motion
+      // Initial velocity - completely deterministic
+      // Always start with a consistent downward velocity
       sphereBody.velocity.set(
-        (Math.random() - 0.5) * 0.1,  // Small random X velocity
-        -0.2 - Math.random() * 0.1,   // Downward Y velocity with randomness
-        0                             // No Z velocity for more consistent physics in VR
+        0,            // No X velocity
+        -0.25,        // Fixed downward Y velocity
+        0             // No Z velocity for 2D physics
       );
       
-      // Add a small random rotation too
+      // Lock movement in Z axis for 2D physics
+      sphereBody.linearFactor.set(1, 1, 0); // Only allow movement in X and Y
+      
+      // No initial rotation - completely deterministic
       sphereBody.angularVelocity.set(
-        (Math.random() - 0.5) * 1,
-        (Math.random() - 0.5) * 1,
-        (Math.random() - 0.5) * 1
+        0,  // No rotation around X axis 
+        0,  // No rotation around Y axis
+        0   // No rotation around Z axis either
       );
+      
+      // Lock rotation around X and Y axes for 2D physics
+      sphereBody.angularFactor.set(0, 0, 1); // Only allow rotation around Z axis
       
       // Add a custom userData property to identify this as a ball
       sphereBody.userData = { isBall: true };
@@ -535,7 +546,7 @@ export default function BounceScene() {
       // Create Three.js mesh
       const sphereGeometry = new THREE.SphereGeometry(radius, 32, 32);
       const sphereMaterial = new THREE.MeshStandardMaterial({
-        color: 0xFFFFFF, // White for golf ball
+        color: 0xFFFFFF, // Pure white for all balls
         roughness: 0.2,  // Smooth surface
         metalness: 0.1   // Slight sheen
       });
@@ -749,8 +760,8 @@ export default function BounceScene() {
         // Otherwise, drop a ball
         const intersection = new THREE.Vector3();
         raycaster.ray.intersectPlane(drawingPlane, intersection);
-        // Add randomness to z-position to prevent balls from sticking to z=0 plane
-        intersection.z += (Math.random() - 0.5) * 1.0; // Add random value between -0.5 and 0.5
+        // Force Z to be 0 to ensure 2D physics in flatland
+        intersection.z = 0;
         const ball = createBall(intersection);
         balls.push(ball);
       }
@@ -808,6 +819,8 @@ export default function BounceScene() {
       raycaster.setFromCamera(mouse, camera);
       const intersection = new THREE.Vector3();
       raycaster.ray.intersectPlane(drawingPlane, intersection);
+      // Force Z to be 0 to ensure 2D physics in flatland
+      intersection.z = 0;
       const ball = createBall(intersection);
       balls.push(ball);
     }
@@ -1024,32 +1037,18 @@ export default function BounceScene() {
         dispenserMesh.userData.sequencerId = Tone.Transport.scheduleRepeat((time) => {
           // Check if current step is active in the sequencer pattern
           if (dispenserMesh.userData.sequencerSteps[step]) {
-            // Create ball position at the BOTTOM of the dispenser with slight randomness
+            // Create ball position exactly at the BOTTOM of the dispenser
+            // No randomness, completely deterministic
             const ballPosition = new THREE.Vector3(
-              dispenserMesh.position.x + (Math.random() * 0.1 - 0.05), // Small X randomness
-              dispenserMesh.position.y - 0.35, // Bottom of dispenser (not top)
-              dispenserMesh.position.z + (Math.random() * 0.1 - 0.05)  // Small Z randomness
+              dispenserMesh.position.x, // Exact X position
+              dispenserMesh.position.y - 0.35, // Bottom of dispenser
+              0  // Force Z=0 for 2D physics
             );
             
-            // Create a ball - note that we can't directly use the createBall function here
-            // so we create a simpler version and rely on the animation loop to update it
-            const radius = 0.1;
-            const sphereGeometry = new THREE.SphereGeometry(radius, 32, 32);
-            const sphereMaterial = new THREE.MeshStandardMaterial({
-              color: 0xFFFFFF,
-              roughness: 0.2,
-              metalness: 0.1
-            });
-            const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
-            sphere.position.copy(ballPosition);
-            sphere.castShadow = true;
-            sphere.receiveShadow = true;
-            
-            // Create a custom event to have the main scene handle the ball creation
-            const event = new CustomEvent('createBall', { 
-              detail: { position: ballPosition } 
-            });
-            window.dispatchEvent(event);
+            // Create the ball
+            const ball = createBall(ballPosition);
+            balls.push(ball);
+            setBallCount(prevCount => prevCount + 1);
             
             // Play a tick sound when ball is dropped
             playNote('G4', '32n', time, 0.4);
