@@ -1,14 +1,1 @@
-{
-  "pages/index.js -> @/components/BounceScene": {
-    "id": "pages/index.js -> @/components/BounceScene",
-    "files": [
-      "static/chunks/components_BounceScene_js.js"
-    ]
-  },
-  "pages/index.js -> @/components/SynthControls": {
-    "id": "pages/index.js -> @/components/SynthControls",
-    "files": [
-      "static/chunks/components_SynthControls_js.js"
-    ]
-  }
-}
+{}

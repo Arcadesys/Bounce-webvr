@@ -1,14 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
-import * as CANNON from 'cannon-es';
-// Import the MIDI sequencer utilities
+import * as CANNON from 'cannon';
+import { createBall, updateBallVisual } from './Ball';
+import { createWall, updateWallVisual } from './Wall';
+import { createGround, updateGroundVisual } from './Ground';
+import { createBoundary, updateBoundaryVisual } from './Boundary';
 import { mapLengthToNote, getNoteColor, playNoteForLength } from '../utils/midiSequencer';
-import NoteDisplay from './NoteDisplay';
-// Import the synthManager functions at the top of the file
+import * as Tone from 'tone';
 import { 
   playBounceSound, 
-  playModeChangeSound 
+  playModeChangeSound,
+  playNote
 } from '../utils/synthManager';
+import NoteDisplay from './NoteDisplay';
 
 export default function BounceScene() {
   const mountRef = useRef(null);
@@ -22,6 +26,8 @@ export default function BounceScene() {
   const [wallLength, setWallLength] = useState(0);
   // State for settings menu
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  // State for ball count
+  const [ballCount, setBallCount] = useState(0);
   
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -61,6 +67,11 @@ export default function BounceScene() {
       
       // Use our global playBounceSound function
       window.playBounceSound = playBounceSound;
+      
+      // Ensure Tone.js is started
+      if (Tone.context.state !== 'running') {
+        Tone.start();
+      }
     }
     
     // Initialize Three.js scene
@@ -257,40 +268,30 @@ export default function BounceScene() {
           // Apply impulse to bounce the ball
           sphereBody.applyImpulse(impulse, sphereBody.position);
           
-          // Play a bounce sound with volume based on velocity
-          const volume = Math.min(0.5, Math.abs(impactVelocity) / 10);
+          // Play the musical note associated with the wall
           if (soundEnabled) {
-            playBounceSound(volume);
+            const volume = Math.min(0.5, Math.abs(impactVelocity) / 10);
+            if (targetBody.userData.length) {
+              // Play musical note based on wall length - passing null as first arg since midiSequencer handles context
+              playNoteForLength(Tone.context, targetBody.userData.length, 0.5, volume);
+            }
           }
           
         } else if (targetBody.userData && targetBody.userData.isGround) {
-          // Ground collision - bouncy for golf ball
+          // Ground collision - mark for removal after a short delay
+          sphereBody.userData = sphereBody.userData || {};
+          // Set removal timestamp to 500ms in the future
+          sphereBody.userData.removeAfter = Date.now() + 500;
           
-          // Play bounce sound
-          if (soundEnabled) {
-            const speed = sphereBody.velocity.length();
-            const volume = Math.min(0.3, speed / 10);
-            playBounceSound(volume);
-          }
+          // No sound for ground collisions
           
         } else if (targetBody.userData && targetBody.userData.isBoundary) {
-          // Boundary collision - bounce realistically
-          if (soundEnabled) {
-            const speed = sphereBody.velocity.length();
-            const volume = Math.min(0.4, speed / 8);
-            playBounceSound(volume);
-          }
+          // Boundary collision - no sound, just bounce
+          
         } else {
-          // Other collisions
+          // Other collisions - no sound
           // Energy loss on general collisions
           sphereBody.velocity.scale(0.99, sphereBody.velocity);
-          
-          // Play bounce sound
-          if (soundEnabled) {
-            const speed = sphereBody.velocity.length();
-            const volume = Math.min(0.2, speed / 15);
-            playBounceSound(volume);
-          }
         }
       });
       
@@ -316,6 +317,9 @@ export default function BounceScene() {
         createdAt: Date.now(),
         markForRemoval: false
       });
+      
+      // Update ball count
+      setBallCount(balls.length);
       
       return { body: sphereBody, mesh: sphere };
     }
@@ -386,7 +390,7 @@ export default function BounceScene() {
       
       // Play the note when the wall is created
       if (soundEnabled) {
-        playNoteForLength(null, length, 0.5, 0.3);
+        playNoteForLength(Tone.context, length, 0.5, 0.3);
       }
       
       return { body: wallBody, mesh: wallMesh, note: note };
@@ -569,10 +573,7 @@ export default function BounceScene() {
         contactMaterialRef.current.restitution = ballMaterial.restitution;
       }
       
-      // Play a subtle feedback tone when material changes
-      if (soundEnabled) {
-        playBounceSound(ballMaterial.restitution * 0.4);
-      }
+      // No sound feedback when material changes
     }
     
     // Toggle settings menu
@@ -624,12 +625,17 @@ export default function BounceScene() {
           balls[i].mesh.quaternion.copy(balls[i].body.quaternion);
           
           // Remove balls that hit the ground or fall too far
-          if ((balls[i].body.userData && balls[i].body.userData.shouldRemove) || 
+          if ((balls[i].body.userData && 
+               (balls[i].body.userData.shouldRemove || 
+                (balls[i].body.userData.removeAfter && Date.now() > balls[i].body.userData.removeAfter))) || 
               balls[i].body.position.y < -10) {
             scene.remove(balls[i].mesh);
             world.removeBody(balls[i].body);
             balls.splice(i, 1);
             i--;
+            
+            // Update ball count
+            setBallCount(balls.length);
           }
           
           // If the ball has come nearly to rest, gradually apply more damping to settle it faster
@@ -739,8 +745,12 @@ export default function BounceScene() {
     
     // Play a subtle feedback tone when value changes
     if (soundEnabled) {
-      playBounceSound(newRestitution * 0.3);
-    }
+      // Play a C major scale note based on the restitution value
+      const noteIndex = Math.floor(newRestitution * 1.5) % 7; // Map 0-10 range to 0-6 index
+      const notes = ['C4', 'D4', 'E4', 'F4', 'G4', 'A4', 'B4']; 
+      const note = notes[noteIndex];
+      playNote(note, '8n', undefined, 0.3);
+    };
   };
   
   // Toggle settings menu
@@ -757,6 +767,11 @@ export default function BounceScene() {
         <p>Wall length determines pitch (2 octaves of C major)</p>
       </div>
       <button id="sound-toggle" aria-label="Toggle sound">🔊</button>
+      
+      {/* Ball counter */}
+      <div className="ball-counter" aria-live="polite">
+        <span role="status">Balls: {ballCount}</span>
+      </div>
       
       {/* Settings button (hamburger with circle) */}
       <button 
@@ -935,6 +950,19 @@ const styles = `
   color: white;
   border: 1px solid #555;
   border-radius: 3px;
+}
+
+/* Add styles for the ball counter */
+.ball-counter {
+  position: absolute;
+  top: 10px;
+  right: 120px; /* Position to the left of sound toggle */
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  padding: 5px 10px;
+  border-radius: 5px;
+  font-size: 0.9em;
+  z-index: 10;
 }
 `;
 

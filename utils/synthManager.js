@@ -6,16 +6,18 @@ const DEFAULT_SYNTH_SETTINGS = {
     type: 'sine',
   },
   envelope: {
-    attack: 0.1,
-    decay: 0.2,
-    sustain: 0.5,
-    release: 0.8,
+    attack: 0.01,   // Much faster attack
+    decay: 0.1,     // Shorter decay
+    sustain: 0.1,   // Very little sustain
+    release: 0.1,   // Quick release
   },
   volume: -10,
 };
 
 // Singleton instance of the synth
 let synthInstance = null;
+// Dedicated synth for bounce sounds
+let bounceSynthInstance = null;
 
 /**
  * Initialize the synth with settings
@@ -36,7 +38,36 @@ export function initSynth(settings = null) {
   // Create new synth instance
   synthInstance = new Tone.Synth(synthSettings).toDestination();
   
+  // Initialize bounce synth if it doesn't exist
+  if (!bounceSynthInstance) {
+    initBounceSynth();
+  }
+  
   return synthInstance;
+}
+
+/**
+ * Initialize a dedicated synth for bounce sounds
+ */
+function initBounceSynth() {
+  // Dispose of existing bounce synth if any
+  if (bounceSynthInstance) {
+    bounceSynthInstance.dispose();
+  }
+  
+  // Create a simpler synth for bounce sounds
+  bounceSynthInstance = new Tone.Synth({
+    oscillator: {
+      type: 'sine'
+    },
+    envelope: {
+      attack: 0.001,  // Almost instant attack
+      decay: 0.05,    // Very short decay
+      sustain: 0.01,  // Basically no sustain
+      release: 0.05   // Quick release
+    },
+    volume: -20 // Much quieter than the musical synth
+  }).toDestination();
 }
 
 /**
@@ -76,7 +107,7 @@ export function playNote(note, duration = '8n', time = undefined, velocity = 0.7
  * Play a note based on a paddle/wall length (compatible with existing code)
  * @param {AudioContext} unusedAudioContext - Ignored (for compatibility)
  * @param {number} length - The length of the wall/paddle
- * @param {number} duration - Duration in seconds
+ * @param {number} duration - Duration in seconds (ignored - we use fixed short duration)
  * @param {number} volume - Volume of the note (0-1)
  * @param {string} unusedWaveform - Ignored (for compatibility)
  * @returns {Object} Information about the played note
@@ -96,8 +127,9 @@ export function playNoteForLength(unusedAudioContext, length, duration = 0.5, vo
   const noteIndex = Math.floor(normalizedLength * notes.length);
   const note = notes[Math.min(noteIndex, notes.length - 1)];
   
-  // Play the note using our synth
-  playNote(note, duration, undefined, volume);
+  // Play the note using our synth with a fixed short duration for percussion
+  const PERCUSSIVE_DURATION = '16n'; // Fixed short duration for all hits
+  playNote(note, PERCUSSIVE_DURATION, undefined, volume);
   
   // Return object similar to the original function for compatibility
   return { 
@@ -111,7 +143,10 @@ export function playNoteForLength(unusedAudioContext, length, duration = 0.5, vo
  * @param {number} intensity - Intensity of the bounce (0-1)
  */
 export function playBounceSound(intensity = 1.0) {
-  const synth = getSynth();
+  // Create bounce synth if it doesn't exist
+  if (!bounceSynthInstance) {
+    initBounceSynth();
+  }
   
   // Ensure audio context is running
   if (Tone.context.state !== 'running') {
@@ -119,23 +154,19 @@ export function playBounceSound(intensity = 1.0) {
   }
   
   // Create a quick bounce sound
-  // This recreates the original bounce sound behavior
   const now = Tone.now();
   
-  // Use the synth's oscillator but override some settings temporarily
-  synth.oscillator.type = 'sine';
+  // Set up frequency sweep - using the dedicated bounce synth
+  bounceSynthInstance.frequency.setValueAtTime(300 + intensity * 200, now);
+  bounceSynthInstance.frequency.exponentialRampToValueAtTime(200, now + 0.05); // Faster sweep
   
-  // Set up frequency sweep
-  synth.frequency.setValueAtTime(300 + intensity * 200, now);
-  synth.frequency.exponentialRampToValueAtTime(200, now + 0.1);
+  // Adjust volume based on intensity but keep it quieter
+  const volume = -30 + intensity * 10; // Keeps volume between -30 and -20 dB
+  bounceSynthInstance.volume.value = volume;
   
-  // Set up volume envelope
-  synth.volume.setValueAtTime(-20 + intensity * 20, now);
-  synth.volume.exponentialRampToValueAtTime(-60, now + 0.2);
-  
-  // Trigger the note
-  synth.triggerAttack(now);
-  synth.triggerRelease(now + 0.2);
+  // Trigger the note with shorter duration
+  bounceSynthInstance.triggerAttack(now);
+  bounceSynthInstance.triggerRelease(now + 0.1); // Shorter release
 }
 
 /**
