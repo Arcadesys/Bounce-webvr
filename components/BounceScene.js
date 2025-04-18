@@ -289,8 +289,7 @@ export default function BounceScene() {
           balls.push(ball);
           setBallCount(prevCount => prevCount + 1);
           
-          // Play a tick sound when ball is dropped
-          playNote('G4', '32n', time, 0.4);
+          // Remove sound when ball is dropped
         }, '4n'); // Schedule on quarter notes
         
         // Make sure transport is using current tempo

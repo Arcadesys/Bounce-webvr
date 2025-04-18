@@ -140,8 +140,12 @@ export function playNote(note, duration = '8n', time = undefined, velocity = 0.7
     Tone.start();
   }
   
+  // If time is undefined, generate a small offset from now
+  // This prevents timing clashes when multiple notes are triggered at once
+  const actualTime = time === undefined ? Tone.now() + Math.random() * 0.01 : time;
+  
   // Play the note
-  synth.triggerAttackRelease(note, duration, time, velocity);
+  synth.triggerAttackRelease(note, duration, actualTime, velocity);
   
   return synth;
 }
