@@ -13,6 +13,7 @@ export default function BounceScene() {
   const cameraRef = useRef(null);
   const dispensersRef = useRef([]);
   const contactMaterialRef = useRef(null);
+  const platformMaterialRef = useRef(null);
   const collisionGroupsRef = useRef({ BALL: 1, ENVIRONMENT: 2 });
   
   // State for UI indicators
