@@ -212,16 +212,32 @@ export default function BounceScene() {
       const length = direction.length();
       const center = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
       
+      // Update state for NoteDisplay component
+      setWallLength(length);
+      
       // Calculate rotation to align with direction
       const wallDirection = direction.clone().normalize();
-      const angle = Math.atan2(wallDirection.x, wallDirection.y);
+      const angle = Math.atan2(direction.y, direction.x);
       
-      // Get note information based on wall length
+      // Get note based on current length
       const note = mapLengthToNote(length);
       const noteColor = getNoteColor(note);
       
+      // Add visible spheres at the endpoints for debugging
+      const sphereGeometry = new THREE.SphereGeometry(0.1, 16, 16);
+      const startSphere = new THREE.Mesh(sphereGeometry, new THREE.MeshStandardMaterial({ color: 0xff0000 }));
+      const endSphere = new THREE.Mesh(sphereGeometry, new THREE.MeshStandardMaterial({ color: 0x00ff00 }));
+      
+      startSphere.position.copy(start);
+      endSphere.position.copy(end);
+      scene.add(startSphere);
+      scene.add(endSphere);
+      
+      console.log("Creating beam from:", start, "to:", end);
+      console.log("Angle:", angle * (180/Math.PI), "degrees");
+      
       // Create physical wall
-      const wallShape = new CANNON.Box(new CANNON.Vec3(length/2, 0.1, 0.1));
+      const wallShape = new CANNON.Box(new CANNON.Vec3(length/2, 0.5, 0.1));
       const wallBody = new CANNON.Body({
         mass: 0, // Static body
         position: new CANNON.Vec3(center.x, center.y, center.z),
@@ -236,7 +252,7 @@ export default function BounceScene() {
       };
       
       // Rotate to match visual representation
-      wallBody.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 0, 1), -angle);
+      wallBody.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 0, 1), angle);
       world.addBody(wallBody);
       wallBodies.push(wallBody);
       
@@ -249,11 +265,13 @@ export default function BounceScene() {
       });
       const wallMesh = new THREE.Mesh(wallGeometry, wallMaterial);
       wallMesh.position.copy(center);
-      wallMesh.rotation.z = -angle;
+      wallMesh.rotation.z = angle;
       wallMesh.castShadow = true;
       wallMesh.receiveShadow = true;
       scene.add(wallMesh);
-      walls.push(wallMesh);
+      
+      // Store all visual elements
+      walls.push(wallMesh, startSphere, endSphere);
       
       // Play the note when the wall is created
       if (audioContext && soundEnabled) {
@@ -267,6 +285,7 @@ export default function BounceScene() {
     function updateTempWall() {
       if (currentWallMesh) {
         scene.remove(currentWallMesh);
+        currentWallMesh = null;
       }
       
       const direction = new THREE.Vector3().subVectors(wallEnd, wallStart);
@@ -276,13 +295,17 @@ export default function BounceScene() {
       // Update state for NoteDisplay component
       setWallLength(length);
       
+      // If points are too close, don't draw anything
+      if (length < 0.1) return;
+      
       const wallDirection = direction.clone().normalize();
-      const angle = Math.atan2(wallDirection.x, wallDirection.y);
+      const angle = Math.atan2(direction.y, direction.x);
       
       // Get note based on current length
       const note = mapLengthToNote(length);
       const noteColor = getNoteColor(note);
       
+      // Create wall preview
       const wallGeometry = new THREE.BoxGeometry(length, 0.2, 0.2);
       const wallMaterial = new THREE.MeshStandardMaterial({ 
         color: noteColor, // Use note-based color
@@ -293,7 +316,7 @@ export default function BounceScene() {
       
       currentWallMesh = new THREE.Mesh(wallGeometry, wallMaterial);
       currentWallMesh.position.copy(center);
-      currentWallMesh.rotation.z = -angle;
+      currentWallMesh.rotation.z = angle;
       scene.add(currentWallMesh);
     }
     
@@ -320,8 +343,21 @@ export default function BounceScene() {
       if (event.shiftKey) {
         isDrawingInternal = true;
         setIsDrawing(true); // Update state for NoteDisplay
+     
+        // Create debug sphere at click point
+        const markerGeometry = new THREE.SphereGeometry(0.1, 8, 8);
+        const markerMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+        const marker = new THREE.Mesh(markerGeometry, markerMaterial);
+        
         const intersection = new THREE.Vector3();
         raycaster.ray.intersectPlane(drawingPlane, intersection);
+        
+        marker.position.copy(intersection);
+        scene.add(marker);
+        setTimeout(() => scene.remove(marker), 2000); // Remove after 2 seconds
+        
+        console.log("Mouse DOWN at:", intersection.x, intersection.y, intersection.z);
+        
         wallStart = intersection.clone();
         wallEnd = intersection.clone();
         updateTempWall();
@@ -351,8 +387,29 @@ export default function BounceScene() {
       if (isDrawingInternal) {
         isDrawingInternal = false;
         setIsDrawing(false); // Update state for NoteDisplay
+        
+        // Get final mouse position
+        mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+        mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+        raycaster.setFromCamera(mouse, camera);
+        
+        // Create debug sphere at release point
+        const markerGeometry = new THREE.SphereGeometry(0.1, 8, 8);
+        const markerMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+        const marker = new THREE.Mesh(markerGeometry, markerMaterial);
+        
+        const intersection = new THREE.Vector3();
+        raycaster.ray.intersectPlane(drawingPlane, intersection);
+        
+        marker.position.copy(intersection);
+        scene.add(marker);
+        setTimeout(() => scene.remove(marker), 2000); // Remove after 2 seconds
+        
+        console.log("Mouse UP at:", intersection.x, intersection.y, intersection.z);
+        
         // Only create a wall if it has some length
         if (wallStart.distanceTo(wallEnd) > 0.2) {
+          console.log("Creating wall from", wallStart, "to", wallEnd);
           createWall(wallStart, wallEnd);
           
           // Remove temporary wall

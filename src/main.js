@@ -225,26 +225,78 @@ export function createBall(position) {
 
 // Create a wall between two points
 export function createWall(start, end) {
-  // Calculate wall properties
-  const direction = new THREE.Vector3().subVectors(end, start);
-  const length = direction.length();
-  const center = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
+  // Calculate length for notes
+  const length = start.distanceTo(end);
   
-  // Calculate rotation to align with direction
-  const wallDirection = direction.clone().normalize();
-  const angle = Math.atan2(wallDirection.x, wallDirection.y);
-  
-  // Get note information based on wall length
+  // Get note information
   const note = mapLengthToNote(length);
   const noteColor = getNoteColor(note);
   
-  // Create physical wall
-  const wallShape = new CANNON.Box(new CANNON.Vec3(length/2, 0.5, 0.1));
+  // First, let's create visible points at each end
+  const sphereGeometry = new THREE.SphereGeometry(0.1, 16, 16);
+  const sphereMaterial = new THREE.MeshStandardMaterial({ color: noteColor });
+  
+  // Start point sphere
+  const startSphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+  startSphere.position.copy(start);
+  scene.add(startSphere);
+  
+  // End point sphere
+  const endSphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+  endSphere.position.copy(end);
+  scene.add(endSphere);
+  
+  // Create a cyliner between the points
+  // We need to position and orient the cylinder to connect the points
+  const direction = new THREE.Vector3().subVectors(end, start);
+  const midpoint = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
+  
+  // Use cylinder geometry for the wall
+  const radius = 0.15;
+  const cylinderGeometry = new THREE.CylinderGeometry(radius, radius, length, 12);
+  const cylinderMaterial = new THREE.MeshStandardMaterial({ 
+    color: noteColor,
+    roughness: 0.8,
+    metalness: 0.2
+  });
+  
+  // Create the cylinder mesh
+  const wallMesh = new THREE.Mesh(cylinderGeometry, cylinderMaterial);
+  
+  // Position the cylinder
+  wallMesh.position.copy(midpoint);
+  
+  // Orient the cylinder to point from start to end
+  // Cylinders in Three.js are aligned along the Y-axis by default
+  // so we need to rotate to align with our direction vector
+  const quaternion = new THREE.Quaternion();
+  // Default cylinder orientation (up along y-axis)
+  const up = new THREE.Vector3(0, 1, 0);
+  // Normalize our direction
+  direction.normalize();
+  // Get the quaternion to rotate from up to our direction
+  quaternion.setFromUnitVectors(up, direction);
+  // Apply rotation
+  wallMesh.setRotationFromQuaternion(quaternion);
+  
+  wallMesh.castShadow = true;
+  wallMesh.receiveShadow = true;
+  scene.add(wallMesh);
+  
+  // Store all meshes for this wall
+  const allMeshes = [wallMesh, startSphere, endSphere];
+  walls.push(...allMeshes);
+  
+  // Create physics body
+  const wallShape = new CANNON.Cylinder(radius, radius, length, 8);
   const wallBody = new CANNON.Body({
     mass: 0, // Static body
-    position: new CANNON.Vec3(center.x, center.y, center.z),
+    position: new CANNON.Vec3(midpoint.x, midpoint.y, midpoint.z),
     shape: wallShape,
   });
+  
+  // Orient the physics body
+  wallBody.quaternion.copy(quaternion);
   
   // Store note information with the wall body
   wallBody.userData = {
@@ -252,62 +304,42 @@ export function createWall(start, end) {
     length: length
   };
   
-  // Rotate to match visual representation
-  wallBody.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 0, 1), -angle);
   world.addBody(wallBody);
   wallBodies.push(wallBody);
-  
-  // Create visual wall
-  const wallGeometry = new THREE.BoxGeometry(length, 1, 0.2);
-  const wallMaterial = new THREE.MeshStandardMaterial({ 
-    color: noteColor, // Use note-based color
-    roughness: 0.8,
-    metalness: 0.2
-  });
-  const wallMesh = new THREE.Mesh(wallGeometry, wallMaterial);
-  wallMesh.position.copy(center);
-  wallMesh.rotation.z = -angle;
-  wallMesh.castShadow = true;
-  wallMesh.receiveShadow = true;
-  scene.add(wallMesh);
-  walls.push(wallMesh);
   
   // Play the note when the wall is created
   if (audioContext && soundEnabled) {
     playNoteForLength(audioContext, length, 0.5, 0.3);
   }
   
-  return { body: wallBody, mesh: wallMesh, note: note };
+  return { body: wallBody, mesh: wallMesh, note: note, allMeshes: allMeshes };
 }
 
 // Update temporary wall while drawing
 function updateTempWall() {
   if (currentWallMesh) {
     scene.remove(currentWallMesh);
+    currentWallMesh = null;
   }
   
-  const direction = new THREE.Vector3().subVectors(wallEnd, wallStart);
-  const length = direction.length();
-  const center = new THREE.Vector3().addVectors(wallStart, wallEnd).multiplyScalar(0.5);
+  // Calculate length
+  const length = wallStart.distanceTo(wallEnd);
   
-  const wallDirection = direction.clone().normalize();
-  const angle = Math.atan2(wallDirection.x, wallDirection.y);
+  // If points are too close, don't draw anything
+  if (length < 0.1) return;
   
-  // Get note based on current length
-  const note = mapLengthToNote(length);
-  const noteColor = getNoteColor(note);
+  // Create a simple line preview
+  const lineGeometry = new THREE.BufferGeometry().setFromPoints([
+    wallStart.clone(),
+    wallEnd.clone()
+  ]);
   
-  const wallGeometry = new THREE.BoxGeometry(length, 1, 0.2);
-  const wallMaterial = new THREE.MeshStandardMaterial({ 
-    color: noteColor, // Use note-based color
-    transparent: true,
-    opacity: 0.7,
-    roughness: 0.8
+  const lineMaterial = new THREE.LineBasicMaterial({ 
+    color: 0xffffff,
+    linewidth: 3
   });
   
-  currentWallMesh = new THREE.Mesh(wallGeometry, wallMaterial);
-  currentWallMesh.position.copy(center);
-  currentWallMesh.rotation.z = -angle;
+  currentWallMesh = new THREE.Line(lineGeometry, lineMaterial);
   scene.add(currentWallMesh);
 }
 
@@ -335,12 +367,24 @@ function onMouseDown(event) {
   }
   
   if (drawMode) {
-    // Start drawing a wall on click
-    isDrawing = true;
+    // Get the exact 3D position where the mouse ray intersects the drawing plane
     const intersection = new THREE.Vector3();
     raycaster.ray.intersectPlane(drawingPlane, intersection);
+    
+    // Create debug sphere to mark click position
+    const markerGeometry = new THREE.SphereGeometry(0.1, 8, 8);
+    const markerMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+    const marker = new THREE.Mesh(markerGeometry, markerMaterial);
+    marker.position.copy(intersection);
+    scene.add(marker);
+    setTimeout(() => scene.remove(marker), 2000); // Remove after 2 seconds
+    
+    console.log("Mouse DOWN at:", intersection.x, intersection.y, intersection.z);
+    
+    // Start drawing a wall
+    isDrawing = true;
     wallStart = intersection.clone();
-    wallEnd = intersection.clone();
+    wallEnd = intersection.clone(); // Initially same as start
     updateTempWall();
   } else {
     // Drop a ball
@@ -366,26 +410,69 @@ function onMouseMove(event) {
 
 function onMouseUp(event) {
   if (isDrawing) {
-    isDrawing = false;
-    
-    // Update final position
+    // Get the final mouse position
     mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
     mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
     raycaster.setFromCamera(mouse, camera);
+    
+    // Set the SECOND endpoint exactly at release position
     const intersection = new THREE.Vector3();
     raycaster.ray.intersectPlane(drawingPlane, intersection);
+    
+    // Create debug sphere to mark release position
+    const markerGeometry = new THREE.SphereGeometry(0.1, 8, 8);
+    const markerMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+    const marker = new THREE.Mesh(markerGeometry, markerMaterial);
+    marker.position.copy(intersection);
+    scene.add(marker);
+    setTimeout(() => scene.remove(marker), 2000); // Remove after 2 seconds
+    
+    console.log("Mouse UP at:", intersection.x, intersection.y, intersection.z);
+    
     wallEnd = intersection;
     
-    // Only create a wall if it has some length
+    // Create a direct line between points instead of fancy geometry
     if (wallStart.distanceTo(wallEnd) > 0.2) {
-      createWall(wallStart, wallEnd);
+      console.log("Creating line from", wallStart, "to", wallEnd);
       
-      // Remove temporary wall
-      if (currentWallMesh) {
-        scene.remove(currentWallMesh);
-        currentWallMesh = null;
-      }
+      // Create a direct line between the two points
+      const lineGeometry = new THREE.BufferGeometry().setFromPoints([
+        wallStart.clone(),
+        wallEnd.clone()
+      ]);
+      const lineMaterial = new THREE.LineBasicMaterial({ 
+        color: 0xffffff,
+        linewidth: 5
+      });
+      const line = new THREE.Line(lineGeometry, lineMaterial);
+      scene.add(line);
+      
+      // Store the line
+      walls.push(line);
+      
+      // Add spheres at endpoints
+      const sphereGeometry = new THREE.SphereGeometry(0.1);
+      const startSphere = new THREE.Mesh(sphereGeometry, new THREE.MeshBasicMaterial({ color: 0xff0000 }));
+      startSphere.position.copy(wallStart);
+      scene.add(startSphere);
+      
+      const endSphere = new THREE.Mesh(sphereGeometry, new THREE.MeshBasicMaterial({ color: 0x00ff00 }));
+      endSphere.position.copy(wallEnd);
+      scene.add(endSphere);
+      
+      walls.push(startSphere, endSphere);
+      
+      // Skip complex wall creation for now
+      // createWall(wallStart, wallEnd);
     }
+    
+    // Remove temporary wall
+    if (currentWallMesh) {
+      scene.remove(currentWallMesh);
+      currentWallMesh = null;
+    }
+    
+    isDrawing = false;
   }
 }
 
@@ -418,10 +505,10 @@ window.addEventListener('touchstart', (event) => {
   raycaster.ray.intersectPlane(drawingPlane, intersection);
   
   if (drawMode) {
-    // Start drawing a wall
+    // Start drawing a wall - set FIRST endpoint exactly at touch position
     isDrawing = true;
     wallStart = intersection.clone();
-    wallEnd = intersection.clone();
+    wallEnd = intersection.clone(); // Initially same as start
     updateTempWall();
   } else {
     // Drop a ball
@@ -441,6 +528,8 @@ window.addEventListener('touchmove', (event) => {
     raycaster.setFromCamera(mouse, camera);
     const intersection = new THREE.Vector3();
     raycaster.ray.intersectPlane(drawingPlane, intersection);
+    
+    // Update the SECOND endpoint continuously during drag
     wallEnd = intersection;
     updateTempWall();
   }
@@ -449,18 +538,21 @@ window.addEventListener('touchmove', (event) => {
 // Handle touch end for completing a wall
 window.addEventListener('touchend', (event) => {
   if (isDrawing) {
-    isDrawing = false;
+    // Set the SECOND endpoint exactly at release position
+    // We use the last known position since touchend doesn't have coordinates
     
     // Only create a wall if it has some length
     if (wallStart.distanceTo(wallEnd) > 0.2) {
       createWall(wallStart, wallEnd);
-      
-      // Remove temporary wall
-      if (currentWallMesh) {
-        scene.remove(currentWallMesh);
-        currentWallMesh = null;
-      }
     }
+    
+    // Remove temporary wall
+    if (currentWallMesh) {
+      scene.remove(currentWallMesh);
+      currentWallMesh = null;
+    }
+    
+    isDrawing = false;
   }
 });
 
@@ -474,20 +566,23 @@ function animate() {
   
   // Update visual objects to match physics
   for (let i = 0; i < balls.length; i++) {
-    balls[i].mesh.position.copy(balls[i].body.position);
-    balls[i].mesh.quaternion.copy(balls[i].body.quaternion);
-    
-    // Remove balls that hit the ground or fall too far
-    if ((balls[i].body.userData && balls[i].body.userData.shouldRemove) || 
-        balls[i].body.position.y < -10) {
-      scene.remove(balls[i].mesh);
-      world.removeBody(balls[i].body);
-      balls.splice(i, 1);
-      i--;
+    if (balls[i] && balls[i].body && balls[i].mesh) {
+      balls[i].mesh.position.copy(balls[i].body.position);
+      balls[i].mesh.quaternion.copy(balls[i].body.quaternion);
+      
+      // Remove balls that hit the ground or fall too far
+      if ((balls[i].body.userData && balls[i].body.userData.shouldRemove) || 
+          balls[i].body.position.y < -10) {
+        scene.remove(balls[i].mesh);
+        world.removeBody(balls[i].body);
+        balls.splice(i, 1);
+        i--;
+      }
     }
   }
   
   renderer.render(scene, camera);
 }
 
-animate(); 
+animate(); // Test comment
+console.log('Test: The file was updated');
