@@ -1,5 +1,4 @@
-@import './SynthCustomizer.css';
-@import './SynthControls.css';
+/* Main styles for the Musical Bounce app */
 
 * {
   box-sizing: border-box;
