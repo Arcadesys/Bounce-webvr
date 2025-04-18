@@ -2,6 +2,7 @@
  * MIDI Sequencer Utility
  * Handles converting bar lengths to MIDI notes and playing them
  */
+import * as Tone from 'tone';
 
 // C major scale notes for two octaves (C4 to C6)
 const MAJOR_SCALE_FREQUENCIES = {
@@ -67,8 +68,8 @@ export function mapLengthToFrequency(length, minLength = 0.2, maxLength = 3.0) {
 }
 
 /**
- * Plays a note based on the wall length using the Web Audio API
- * @param {AudioContext} audioContext - The audio context to use
+ * Plays a note based on the wall length using Tone.js
+ * @param {AudioContext} audioContext - The audio context to use (passed from Tone.js)
  * @param {number} length - The length of the wall
  * @param {number} duration - The duration of the note in seconds
  * @param {number} volume - The volume of the note (0-1)
@@ -79,28 +80,62 @@ export function playNoteForLength(audioContext, length, duration = 0.5, volume =
   if (!audioContext) return null;
   
   const frequency = mapLengthToFrequency(length);
+  const note = mapLengthToNote(length);
   
-  // Create oscillator and gain nodes
-  const oscillator = audioContext.createOscillator();
-  const gainNode = audioContext.createGain();
+  // Use Tone.js to play the sound
+  if (typeof Tone !== 'undefined') {
+    // Create a temporary synth
+    const synth = new Tone.Synth({
+      oscillator: {
+        type: waveform
+      },
+      envelope: {
+        attack: 0.001,
+        decay: 0.1,
+        sustain: 0.1,
+        release: 0.1
+      },
+      volume: (volume * 20) - 20 // Convert 0-1 range to -20 to 0 dB
+    }).toDestination();
+    
+    // Play the note
+    synth.triggerAttackRelease(frequency, duration);
+    
+    // Dispose of the synth after it's done playing
+    setTimeout(() => {
+      synth.dispose();
+    }, duration * 1000 + 100);
+    
+    return { frequency, note };
+  }
   
-  // Configure oscillator
-  oscillator.type = waveform;
-  oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
+  // Fallback to Web Audio API if Tone.js is not available
+  else if (audioContext.createOscillator) {
+    // Create oscillator and gain nodes
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    
+    // Configure oscillator
+    oscillator.type = waveform;
+    oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
+    
+    // Configure gain (volume with fade out)
+    gainNode.gain.setValueAtTime(volume, audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + duration);
+    
+    // Connect nodes
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    
+    // Start and stop the oscillator
+    oscillator.start();
+    oscillator.stop(audioContext.currentTime + duration);
+    
+    return { oscillator, gainNode, frequency, note };
+  }
   
-  // Configure gain (volume with fade out)
-  gainNode.gain.setValueAtTime(volume, audioContext.currentTime);
-  gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + duration);
-  
-  // Connect nodes
-  oscillator.connect(gainNode);
-  gainNode.connect(audioContext.destination);
-  
-  // Start and stop the oscillator
-  oscillator.start();
-  oscillator.stop(audioContext.currentTime + duration);
-  
-  return { oscillator, gainNode, frequency, note: mapLengthToNote(length) };
+  // Return basic info if neither method is available
+  return { frequency, note };
 }
 
 /**

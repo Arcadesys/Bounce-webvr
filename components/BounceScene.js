@@ -1,10 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
-import * as CANNON from 'cannon';
-import { createBall, updateBallVisual } from './Ball';
-import { createWall, updateWallVisual } from './Wall';
-import { createGround, updateGroundVisual } from './Ground';
-import { createBoundary, updateBoundaryVisual } from './Boundary';
+import * as CANNON from 'cannon-es';
 import { mapLengthToNote, getNoteColor, playNoteForLength } from '../utils/midiSequencer';
 import * as Tone from 'tone';
 import { 
