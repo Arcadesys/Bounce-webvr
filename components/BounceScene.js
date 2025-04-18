@@ -5,6 +5,9 @@ import * as Tone from 'tone';
 import { mapLengthToNote, getNoteColor, playNoteForLength } from '../utils/midiSequencer';
 import { playBounceSound, playNote } from '../utils/synthManager';
 import NoteDisplay from './NoteDisplay';
+import SelectionManager from '../utils/SelectionManager';
+import SettingsMenu from './SettingsMenu';
+import '../styles/SettingsMenu.css';
 
 export default function BounceScene() {
   const mountRef = useRef(null);
@@ -30,6 +33,9 @@ export default function BounceScene() {
   });
   // State for metronome pulse
   const [metroPulse, setMetroPulse] = useState(false);
+  // State for selection
+  const [selectedObject, setSelectedObject] = useState(null);
+  const [selectedType, setSelectedType] = useState(null);
   
   // Effect to initialize Tone.js Transport with the current tempo
   useEffect(() => {
@@ -77,6 +83,76 @@ export default function BounceScene() {
     let raycaster = new THREE.Raycaster(); // Raycaster for mouse interaction
     let drawingPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0); // Plane for mouse interaction
     
+    // Create a selection manager for handling object selection
+    const selectionManager = new SelectionManager();
+    selectionManager.setSelectionChangeCallback((object, type) => {
+      setSelectedObject(object);
+      setSelectedType(type);
+    });
+    
+    // Define event handlers for custom events
+    const handleDeleteObject = (event) => {
+      const { object, type } = event.detail;
+      
+      // Handle deletion based on object type
+      if (type === 'beam' && object.userData && object.userData.isBeam) {
+        // Remove the beam mesh from the scene
+        scene.remove(object);
+        
+        // Remove the beam body from the physics world
+        if (object.userData.body) {
+          world.removeBody(object.userData.body);
+        }
+        
+        // Remove the beam from the walls array
+        const wallIndex = walls.indexOf(object);
+        if (wallIndex !== -1) {
+          walls.splice(wallIndex, 1);
+        }
+        
+        // Remove the beam body from the wallBodies array if it exists
+        if (object.userData.body) {
+          const bodyIndex = wallBodies.indexOf(object.userData.body);
+          if (bodyIndex !== -1) {
+            wallBodies.splice(bodyIndex, 1);
+          }
+        }
+        
+        // Play deletion sound
+        playNote('A2', '8n');
+      } 
+      else if (type === 'dispenser' && object.userData && object.userData.isDispenser) {
+        // Clear the sequencer if it exists
+        if (object.userData.sequencerId !== null) {
+          Tone.Transport.clear(object.userData.sequencerId);
+        }
+        
+        // Remove the dispenser mesh from the scene
+        scene.remove(object);
+        
+        // Remove from the dispensers array
+        const dispenserIndex = dispensers.indexOf(object);
+        if (dispenserIndex !== -1) {
+          dispensers.splice(dispenserIndex, 1);
+          setDispenserCount(prevCount => prevCount - 1);
+        }
+        
+        // Play deletion sound
+        playNote('A2', '8n');
+      }
+    };
+    
+    const handleCreateBall = (event) => {
+      const { position } = event.detail;
+      const ball = createBall(position);
+      balls.push(ball);
+      setBallCount(prevCount => prevCount + 1);
+    };
+    
+    // Add event listeners for custom events
+    window.addEventListener('deleteObject', handleDeleteObject);
+    window.addEventListener('createBall', handleCreateBall);
+    
     // Define physics materials inside the useEffect
     const ballMaterial = new CANNON.Material("ballMaterial");
     ballMaterial.friction = 0.3;
@@ -102,6 +178,7 @@ export default function BounceScene() {
       
       // Use the playBounceSound from synthManager
       window.playBounceSound = playBounceSound;
+      window.playNote = playNote;
     }
     
     // Initialize Three.js scene
@@ -250,7 +327,7 @@ export default function BounceScene() {
       return boundaryBody;
     }
     
-    // Create a dispenser at the specified position
+    // Create a dispenser with 16-step sequencer
     function createDispenser(position) {
       // Create visual indicator for dispenser
       const geometry = new THREE.CylinderGeometry(0.3, 0.3, 0.5, 16);
@@ -273,25 +350,40 @@ export default function BounceScene() {
       // Create sequencer for this dispenser using Tone.js Transport
       let sequencerId = null;
       
-      // Function to schedule ball drops
+      // Default sequencer pattern - activate every 4th step (1, 5, 9, 13)
+      const defaultSequencerSteps = Array(16).fill(false).map((_, i) => i % 4 === 0);
+      
+      // Function to schedule ball drops based on sequencer pattern
       const startSequence = () => {
-        // Create loop that fires on quarter notes
+        // Remove previous sequencer if it exists
+        if (sequencerId !== null) {
+          Tone.Transport.clear(sequencerId);
+        }
+        
+        // Create loop that checks against the sequencer pattern
+        let step = 0;
         sequencerId = Tone.Transport.scheduleRepeat((time) => {
-          // Create ball position slightly above the dispenser
-          const ballPosition = new THREE.Vector3(
-            position.x, 
-            position.y + 0.5, 
-            position.z
-          );
+          // Check if current step is active in the sequencer pattern
+          if (dispenserMesh.userData.sequencerSteps[step]) {
+            // Create ball position slightly above the dispenser
+            const ballPosition = new THREE.Vector3(
+              position.x, 
+              position.y + 0.5, 
+              position.z
+            );
+            
+            // Create the ball
+            const ball = createBall(ballPosition);
+            balls.push(ball);
+            setBallCount(prevCount => prevCount + 1);
+            
+            // Play a tick sound when ball is dropped
+            playNote('G4', '32n', time, 0.4);
+          }
           
-          // Create the ball
-          const ball = createBall(ballPosition);
-          balls.push(ball);
-          setBallCount(prevCount => prevCount + 1);
-          
-          // Play a tick sound when ball is dropped
-          playNote('G4', '32n', time, 0.4);
-        }, '4n'); // Schedule on quarter notes
+          // Increment step and wrap around to 0 after 15
+          step = (step + 1) % 16;
+        }, '16n'); // Schedule on 16th notes for finer control
         
         // Make sure transport is using current tempo
         Tone.Transport.bpm.value = tempo;
@@ -302,22 +394,23 @@ export default function BounceScene() {
         }
       };
       
-      // Store dispenser data
-      const dispenser = {
-        mesh: dispenserMesh,
+      // Store dispenser data and sequencer pattern in userData for access in settings
+      dispenserMesh.userData = {
         position: position.clone(),
         sequencerId: sequencerId,
-        isActive: true
+        isActive: true,
+        sequencerSteps: [...defaultSequencerSteps],
+        isDispenser: true
       };
       
       // Add to dispensers array
-      dispensers.push(dispenser);
+      dispensers.push(dispenserMesh);
       setDispenserCount(prevCount => prevCount + 1);
       
       // Start the sequence
       startSequence();
       
-      return dispenser;
+      return dispenserMesh;
     }
     
     // Create a ball at the specified position
@@ -462,7 +555,8 @@ export default function BounceScene() {
         note: note,
         length: length,
         isWall: true, // Identify as a wall for collision handling
-        restitution: 0.95 // High restitution for trampoline effect without adding energy
+        restitution: 0.95, // High restitution for trampoline effect without adding energy
+        pitch: 0.5 // Default pitch modifier
       };
       
       // Rotate physics body to match visual representation
@@ -487,6 +581,16 @@ export default function BounceScene() {
       wallMesh.receiveShadow = true;
       scene.add(wallMesh);
       walls.push(wallMesh);
+      
+      // Store reference to physics body and additional properties for settings
+      wallMesh.userData = {
+        body: wallBody,
+        note: note,
+        length: length,
+        isBeam: true, // Identify as a beam for selection
+        pitch: 0.5, // Default pitch modifier
+        restitution: 0.95 // Default elasticity
+      };
       
       // Play the note when the wall is created
       if (soundEnabled) {
@@ -546,6 +650,29 @@ export default function BounceScene() {
       
       // Cast ray from mouse position into scene
       raycaster.setFromCamera(mouse, camera);
+      
+      // Check for intersections with objects in the scene
+      const intersects = raycaster.intersectObjects(scene.children);
+      
+      // If we hit an object, handle selection
+      if (intersects.length > 0) {
+        const intersected = intersects[0].object;
+        
+        // Check if the intersected object is a beam
+        if (intersected.userData && intersected.userData.isBeam) {
+          selectionManager.select(intersected, 'beam');
+          return;
+        }
+        
+        // Check if the intersected object is a dispenser
+        if (intersected.userData && intersected.userData.isDispenser) {
+          selectionManager.select(intersected, 'dispenser');
+          return;
+        }
+      } else {
+        // If we didn't hit anything, deselect
+        selectionManager.deselect();
+      }
       
       // Create dispenser if cmd key (macOS) or ctrl key (Windows/Linux) is pressed
       if (event.metaKey || event.ctrlKey) {
@@ -679,21 +806,6 @@ export default function BounceScene() {
       // No sound feedback when material changes
     }
     
-    // Toggle settings menu
-    window.toggleSettings = () => {
-      const settingsMenu = document.getElementById('settings-menu');
-      if (settingsMenu) {
-        const isVisible = settingsMenu.style.display === 'block';
-        settingsMenu.style.display = isVisible ? 'none' : 'block';
-        
-        // Update accessibility attribute
-        const settingsButton = document.getElementById('settings-button');
-        if (settingsButton) {
-          settingsButton.setAttribute('aria-expanded', !isVisible);
-        }
-      }
-    };
-    
     // Animation loop
     const timeStep = 1 / 60; // 60 frames per second
     let lastCallTime; // For tracking accumulated time between frames
@@ -752,90 +864,154 @@ export default function BounceScene() {
       renderer.render(scene, camera);
     }
     
-    // Setup the scene
+    // Setup event listeners
+    function setupEventListeners() {
+      window.addEventListener('mousedown', onMouseDown);
+      window.addEventListener('mousemove', onMouseMove);
+      window.addEventListener('mouseup', onMouseUp);
+      window.addEventListener('resize', onWindowResize);
+      window.addEventListener('touchstart', onTouchStart);
+    }
+    
+    // Initialize scene
     initScene();
     initPhysics();
-    
-    // Add event listeners
-    window.addEventListener('mousedown', onMouseDown);
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
-    window.addEventListener('resize', onWindowResize);
-    window.addEventListener('touchstart', onTouchStart);
-    
-    // Setup sound toggle
-    const soundToggle = document.getElementById('sound-toggle');
-    if (soundToggle) {
-      soundToggle.addEventListener('click', toggleSound);
-    }
-    
-    // Setup material picker
-    const materialSelect = document.getElementById('ball-material');
-    if (materialSelect) {
-      materialSelect.addEventListener('change', handleMaterialChange);
-    }
-    
-    // Setup settings toggle
-    const settingsButton = document.getElementById('settings-button');
-    if (settingsButton) {
-      settingsButton.addEventListener('click', window.toggleSettings);
-    }
-    
-    // Start animation loop
+    setupEventListeners();
     animate();
     
-    // Cleanup function
+    // Create initial boundary walls to contain the balls
+    createBoundary(-5, 0, 10, 0.2, 0, 0); // Left boundary
+    createBoundary(5, 0, 10, 0.2, 0, 0);  // Right boundary
+    
+    // Cleanup on component unmount
     return () => {
-      // Clean up all event listeners
       window.removeEventListener('mousedown', onMouseDown);
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
       window.removeEventListener('resize', onWindowResize);
       window.removeEventListener('touchstart', onTouchStart);
       
-      // Remove sound toggle listener
-      const soundToggle = document.getElementById('sound-toggle');
-      if (soundToggle) {
-        soundToggle.removeEventListener('click', toggleSound);
-      }
+      // Remove custom event listeners
+      window.removeEventListener('deleteObject', handleDeleteObject);
+      window.removeEventListener('createBall', handleCreateBall);
       
-      // Remove material picker listener
-      const materialSelect = document.getElementById('ball-material');
-      if (materialSelect) {
-        materialSelect.removeEventListener('change', handleMaterialChange);
-      }
-      
-      // Remove settings toggle listener
-      const settingsButton = document.getElementById('settings-button');
-      if (settingsButton) {
-        settingsButton.removeEventListener('click', window.toggleSettings);
-      }
-      
-      // Cleanup Tone.js resources
-      if (Tone.Transport) {
-        Tone.Transport.stop();
-        Tone.Transport.cancel();
-      }
-      
-      // Clean up physics body references
-      dispensers.forEach(dispenser => {
-        if (dispenser.sequencerId !== null) {
-          Tone.Transport.clear(dispenser.sequencerId);
-        }
-      });
-      
-      // Stop animation frame
-      cancelAnimationFrame(animate);
-      
-      // Clean up Three.js resources
+      // Clean up Three.js scene and any other resources
       if (renderer) {
         renderer.dispose();
-        mountRef.current?.removeChild(renderer.domElement);
+        // Remove canvas from DOM
+        const canvas = mountRef.current.querySelector('canvas');
+        if (canvas) {
+          mountRef.current.removeChild(canvas);
+        }
       }
     };
   }, []);
+
+  // Function to handle beam updates from the settings menu
+  const handleBeamUpdate = (beamMesh, settings) => {
+    if (!beamMesh || !beamMesh.userData) return;
+    
+    // Update the beam's properties
+    if (settings.pitch !== undefined) {
+      beamMesh.userData.pitch = settings.pitch;
+      
+      // Also update the physics body if it exists
+      if (beamMesh.userData.body) {
+        beamMesh.userData.body.userData.pitch = settings.pitch;
+      }
+    }
+    
+    if (settings.restitution !== undefined) {
+      beamMesh.userData.restitution = settings.restitution;
+      
+      // Also update the physics body if it exists
+      if (beamMesh.userData.body) {
+        beamMesh.userData.body.userData.restitution = settings.restitution;
+      }
+    }
+    
+    // Play a confirmation sound
+    playNote('E5', '32n');
+  };
   
-  // Function to update platform bounciness
+  // Function to handle dispenser updates from the settings menu
+  const handleDispenserUpdate = (dispenserMesh, settings) => {
+    if (!dispenserMesh || !dispenserMesh.userData) return;
+    
+    // Update the dispenser's properties
+    if (settings.sequencerSteps !== undefined) {
+      dispenserMesh.userData.sequencerSteps = [...settings.sequencerSteps];
+      
+      // Restart the sequence to apply the new pattern
+      // This is handled by the startSequence function defined in createDispenser
+      if (dispenserMesh.userData.sequencerId !== null) {
+        Tone.Transport.clear(dispenserMesh.userData.sequencerId);
+        
+        // Create a function to restart the sequence
+        let step = 0;
+        dispenserMesh.userData.sequencerId = Tone.Transport.scheduleRepeat((time) => {
+          // Check if current step is active in the sequencer pattern
+          if (dispenserMesh.userData.sequencerSteps[step]) {
+            // Create ball position slightly above the dispenser
+            const ballPosition = new THREE.Vector3(
+              dispenserMesh.position.x, 
+              dispenserMesh.position.y + 0.5, 
+              dispenserMesh.position.z
+            );
+            
+            // Create a ball - note that we can't directly use the createBall function here
+            // so we create a simpler version and rely on the animation loop to update it
+            const radius = 0.1;
+            const sphereGeometry = new THREE.SphereGeometry(radius, 32, 32);
+            const sphereMaterial = new THREE.MeshStandardMaterial({
+              color: 0xFFFFFF,
+              roughness: 0.2,
+              metalness: 0.1
+            });
+            const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+            sphere.position.copy(ballPosition);
+            sphere.castShadow = true;
+            sphere.receiveShadow = true;
+            
+            // Create a custom event to have the main scene handle the ball creation
+            const event = new CustomEvent('createBall', { 
+              detail: { position: ballPosition } 
+            });
+            window.dispatchEvent(event);
+            
+            // Play a tick sound when ball is dropped
+            playNote('G4', '32n', time, 0.4);
+          }
+          
+          // Increment step and wrap around to 0 after 15
+          step = (step + 1) % 16;
+        }, '16n');
+      }
+    }
+    
+    // Play a confirmation sound
+    playNote('A4', '32n');
+  };
+  
+  // Function to handle deletion of objects
+  const handleDelete = (object, type) => {
+    if (!object) return;
+    
+    // Create a custom event to have the main scene handle the deletion
+    const event = new CustomEvent('deleteObject', { 
+      detail: { object, type } 
+    });
+    window.dispatchEvent(event);
+    
+    // Play a delete sound
+    playNote('A2', '8n');
+    
+    // Clear the selection
+    setSelectedObject(null);
+    setSelectedType(null);
+  };
+
+  // Function to handle bouncing/elasticity changes
   const handleBouncinessChange = (event) => {
     const newRestitution = parseFloat(event.target.value);
     
@@ -865,7 +1041,7 @@ export default function BounceScene() {
     };
   };
   
-  // Function to update tempo (BPM)
+  // Function to handle tempo changes
   const handleTempoChange = (event) => {
     const newTempo = parseInt(event.target.value, 10);
     setTempo(newTempo);
@@ -888,91 +1064,103 @@ export default function BounceScene() {
     }
   };
   
-  // Toggle settings menu
+  // Function to toggle settings menu
   const toggleSettings = () => {
     setIsSettingsOpen(!isSettingsOpen);
   };
 
   return (
-    <div className="scene-container" ref={mountRef} style={{ width: '100%', height: '100vh' }}>
-      <div id="instructions">
-        <h2>Musical Bounce Controls</h2>
-        <p>Click to drop balls</p>
-        <p>Shift + Click + Drag to create walls</p>
-        <p><span role="img" aria-label="Command key">⌘</span>/<span role="img" aria-label="Control key">Ctrl</span> + Click: Place a rhythm dispenser</p>
-        <p>Wall length determines pitch (2 octaves of C major)</p>
-      </div>
-      <button id="sound-toggle" aria-label="Toggle sound">🔊</button>
+    <div className="bounce-scene-container">
+      <div ref={mountRef} className="scene-container" />
       
-      {/* Ball counter */}
-      <div className="ball-counter" aria-live="polite">
-        <span role="status">Balls: {ballCount}</span>
-      </div>
+      {isDrawing && <NoteDisplay length={wallLength} />}
       
-      {/* Dispenser counter */}
-      <div className="dispenser-counter" aria-live="polite">
-        <span role="status">Dispensers: {dispenserCount}</span>
-      </div>
-      
-      {/* Visual metronome indicator */}
-      <div 
-        className={`metronome-indicator ${metroPulse ? 'pulse' : ''}`} 
-        aria-label="Tempo indicator" 
-        role="status"
-      >
-        <span className="metronome-dot"></span>
-      </div>
-      
-      {/* Settings button (hamburger with circle) */}
-      <button 
-        id="settings-button" 
-        className={`settings-button ${isSettingsOpen ? 'active' : ''}`}
-        onClick={toggleSettings}
-        aria-label="Settings"
-        aria-expanded={isSettingsOpen}
-      >
-        <div className="hamburger">
-          <span></span>
-          <span></span>
-          <span></span>
-        </div>
-      </button>
-      
-      {/* Settings panel */}
-      <div className={`settings-panel ${isSettingsOpen ? 'open' : ''}`} aria-hidden={!isSettingsOpen}>
-        <h3>Bounce Settings</h3>
-        <div className="setting">
-          <label htmlFor="bounciness">Bounciness</label>
-          <input 
-            type="range" 
-            id="bounciness" 
-            min="0.1" 
-            max="0.99" 
-            step="0.01" 
-            defaultValue="0.97"
-            onChange={handleBouncinessChange}
-            aria-label="Adjust bounciness from 0.1 to 0.99"
-          />
-          <div className="value" id="bounciness-value">0.97</div>
+      <div className="ui-overlay">
+        <div className="stats">
+          <div>Balls: {ballCount}</div>
+          <div>Dispensers: {dispenserCount}</div>
+          <div className={`metronome ${metroPulse ? 'pulse' : ''}`}>♩ {tempo} BPM</div>
         </div>
         
-        <div className="setting">
-          <label htmlFor="tempo">Tempo (BPM)</label>
-          <input 
-            type="range" 
-            id="tempo" 
-            min="60" 
-            max="180" 
-            step="1" 
-            value={tempo}
-            onChange={handleTempoChange}
-            aria-label="Adjust tempo from 60 to 180 BPM"
-          />
-          <div className="value" id="tempo-value">{tempo}</div>
+        <div className="controls">
+          <button 
+            id="settings-button" 
+            className="control-button settings-button" 
+            onClick={toggleSettings}
+            aria-expanded={isSettingsOpen}
+            aria-label="Settings menu"
+          >
+            ⚙️
+          </button>
+          
+          <button 
+            id="sound-toggle" 
+            className="control-button sound-button" 
+            onClick={() => window.toggleSound && window.toggleSound()}
+            aria-label="Toggle sound"
+          >
+            🔊
+          </button>
+        </div>
+        
+        <div id="settings-menu" className="scene-settings" style={{ display: isSettingsOpen ? 'block' : 'none' }}>
+          <h3>Bounce Scene Settings</h3>
+          
+          <div className="setting">
+            <label htmlFor="bounciness">Bounciness</label>
+            <input 
+              type="range" 
+              id="bounciness" 
+              min="0.1" 
+              max="0.99" 
+              step="0.01" 
+              defaultValue="0.95" 
+              onChange={handleBouncinessChange} 
+            />
+          </div>
+          
+          <div className="setting">
+            <label htmlFor="tempo">Tempo (BPM)</label>
+            <input 
+              type="range" 
+              id="tempo" 
+              min="60" 
+              max="180" 
+              step="1" 
+              value={tempo} 
+              onChange={handleTempoChange} 
+            />
+            <span>{tempo} BPM</span>
+          </div>
+          
+          <div className="setting">
+            <label htmlFor="material">Ball Material</label>
+            <select id="material" onChange={(e) => window.handleMaterialChange && window.handleMaterialChange(e)}>
+              <option value="golf">Golf Ball</option>
+              <option value="rubber">Rubber Ball</option>
+              <option value="steel">Steel Ball</option>
+              <option value="wood">Wooden Ball</option>
+            </select>
+          </div>
         </div>
       </div>
       
-      <NoteDisplay isDrawing={isDrawing} wallLength={wallLength} />
+      <div className="instructions">
+        <p>Click to drop a ball | Hold Shift & drag to draw a beam | Cmd/Ctrl+click to add a dispenser | Click objects to select</p>
+      </div>
+      
+      {/* Settings Menu for selected objects */}
+      <SettingsMenu
+        selectedObject={selectedObject}
+        selectedType={selectedType}
+        onClose={() => {
+          setSelectedObject(null);
+          setSelectedType(null);
+        }}
+        onDelete={handleDelete}
+        onUpdateBeam={handleBeamUpdate}
+        onUpdateDispenser={handleDispenserUpdate}
+      />
     </div>
   );
 }
