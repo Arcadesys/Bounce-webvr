@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
+import { mapLengthToNote, getNoteColor, playNoteForLength } from '../utils/midiSequencer';
 
 // Audio context for sound effects
 let audioContext;
@@ -133,14 +134,25 @@ export function createBall(position) {
   ballBody.addEventListener('collide', (event) => {
     const relativeVelocity = event.contact.getImpactVelocityAlongNormal();
     
-    // Play bounce sound
-    if (window.playBounceSound && Math.abs(relativeVelocity) > 0.5) {
+    // Get the other colliding body
+    const otherBody = event.body === ballBody ? event.target : event.body;
+    
+    // Check if colliding with a wall that has note information
+    if (otherBody.userData && otherBody.userData.note && Math.abs(relativeVelocity) > 0.5) {
+      // Play the note associated with the wall
+      if (audioContext && soundEnabled) {
+        // Velocity affects volume
+        const intensity = Math.min(Math.abs(relativeVelocity) / 10, 1);
+        playNoteForLength(audioContext, otherBody.userData.length, 0.5, intensity * 0.5);
+      }
+    } 
+    // Default bounce sound for other collisions
+    else if (Math.abs(relativeVelocity) > 0.5) {
       const intensity = Math.min(Math.abs(relativeVelocity) / 10, 1);
       window.playBounceSound(intensity);
     }
     
     // If collided with ground, mark for removal
-    const otherBody = event.body === ballBody ? event.target : event.body;
     if (otherBody.userData && otherBody.userData.isGround) {
       ballBody.userData = ballBody.userData || {};
       ballBody.userData.shouldRemove = true;
@@ -173,6 +185,10 @@ export function createWall(start, end) {
   const wallDirection = direction.clone().normalize();
   const angle = Math.atan2(wallDirection.x, wallDirection.y);
   
+  // Get note information based on wall length
+  const note = mapLengthToNote(length);
+  const noteColor = getNoteColor(note);
+  
   // Create physical wall
   const wallShape = new CANNON.Box(new CANNON.Vec3(length/2, 0.5, 0.1));
   const wallBody = new CANNON.Body({
@@ -180,6 +196,12 @@ export function createWall(start, end) {
     position: new CANNON.Vec3(center.x, center.y, center.z),
     shape: wallShape,
   });
+  
+  // Store note information with the wall body
+  wallBody.userData = {
+    note: note,
+    length: length
+  };
   
   // Rotate to match visual representation
   wallBody.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 0, 1), -angle);
@@ -189,7 +211,7 @@ export function createWall(start, end) {
   // Create visual wall
   const wallGeometry = new THREE.BoxGeometry(length, 1, 0.2);
   const wallMaterial = new THREE.MeshStandardMaterial({ 
-    color: 0x8B4513,
+    color: noteColor, // Use note-based color
     roughness: 0.8,
     metalness: 0.2
   });
@@ -201,7 +223,12 @@ export function createWall(start, end) {
   scene.add(wallMesh);
   walls.push(wallMesh);
   
-  return { body: wallBody, mesh: wallMesh };
+  // Play the note when the wall is created
+  if (audioContext && soundEnabled) {
+    playNoteForLength(audioContext, length, 0.5, 0.3);
+  }
+  
+  return { body: wallBody, mesh: wallMesh, note: note };
 }
 
 // Update temporary wall while drawing
@@ -217,9 +244,13 @@ function updateTempWall() {
   const wallDirection = direction.clone().normalize();
   const angle = Math.atan2(wallDirection.x, wallDirection.y);
   
+  // Get note based on current length
+  const note = mapLengthToNote(length);
+  const noteColor = getNoteColor(note);
+  
   const wallGeometry = new THREE.BoxGeometry(length, 1, 0.2);
   const wallMaterial = new THREE.MeshStandardMaterial({ 
-    color: 0xADD8E6,
+    color: noteColor, // Use note-based color
     transparent: true,
     opacity: 0.7,
     roughness: 0.8

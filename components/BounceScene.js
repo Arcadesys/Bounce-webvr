@@ -1,6 +1,9 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
+// Import the MIDI sequencer utilities
+import { mapLengthToNote, getNoteColor, playNoteForLength } from '../utils/midiSequencer';
+import NoteDisplay from './NoteDisplay';
 
 export default function BounceScene() {
   const mountRef = useRef(null);
@@ -8,6 +11,10 @@ export default function BounceScene() {
   const contactMaterialRef = useRef(null);
   // Store platform material for access from slider handler
   const platformMaterialRef = useRef(null);
+  
+  // State for note display
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [wallLength, setWallLength] = useState(0);
   
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -18,7 +25,7 @@ export default function BounceScene() {
     let balls = [];
     let walls = [];
     let wallBodies = [];
-    let isDrawing = false;
+    let isDrawingInternal = false;
     let wallStart = new THREE.Vector3();
     let wallEnd = new THREE.Vector3();
     let currentWallMesh = null;
@@ -158,14 +165,25 @@ export default function BounceScene() {
       ballBody.addEventListener('collide', (event) => {
         const relativeVelocity = event.contact.getImpactVelocityAlongNormal();
         
-        // Play bounce sound
-        if (window.playBounceSound && Math.abs(relativeVelocity) > 0.5) {
+        // Get the other colliding body
+        const otherBody = event.body === ballBody ? event.target : event.body;
+        
+        // Check if colliding with a wall that has note information
+        if (otherBody.userData && otherBody.userData.note && Math.abs(relativeVelocity) > 0.5) {
+          // Play the note associated with the wall
+          if (audioContext && soundEnabled) {
+            // Velocity affects volume
+            const intensity = Math.min(Math.abs(relativeVelocity) / 10, 1);
+            playNoteForLength(audioContext, otherBody.userData.length, 0.5, intensity * 0.5);
+          }
+        } 
+        // Default bounce sound for other collisions
+        else if (Math.abs(relativeVelocity) > 0.5) {
           const intensity = Math.min(Math.abs(relativeVelocity) / 10, 1);
           window.playBounceSound(intensity);
         }
         
         // If collided with ground, mark for removal
-        const otherBody = event.body === ballBody ? event.target : event.body;
         if (otherBody.userData && otherBody.userData.isGround) {
           ballBody.userData = ballBody.userData || {};
           ballBody.userData.shouldRemove = true;
@@ -198,6 +216,10 @@ export default function BounceScene() {
       const wallDirection = direction.clone().normalize();
       const angle = Math.atan2(wallDirection.x, wallDirection.y);
       
+      // Get note information based on wall length
+      const note = mapLengthToNote(length);
+      const noteColor = getNoteColor(note);
+      
       // Create physical wall
       const wallShape = new CANNON.Box(new CANNON.Vec3(length/2, 0.1, 0.1));
       const wallBody = new CANNON.Body({
@@ -207,6 +229,12 @@ export default function BounceScene() {
         material: platformMaterial // Assign platform material
       });
       
+      // Store note information with the wall body for collision handling
+      wallBody.userData = {
+        note: note,
+        length: length
+      };
+      
       // Rotate to match visual representation
       wallBody.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 0, 1), -angle);
       world.addBody(wallBody);
@@ -215,7 +243,7 @@ export default function BounceScene() {
       // Create visual wall
       const wallGeometry = new THREE.BoxGeometry(length, 0.2, 0.2);
       const wallMaterial = new THREE.MeshStandardMaterial({ 
-        color: 0x8B4513,
+        color: noteColor, // Use note-based color
         roughness: 0.8,
         metalness: 0.2
       });
@@ -227,7 +255,12 @@ export default function BounceScene() {
       scene.add(wallMesh);
       walls.push(wallMesh);
       
-      return { body: wallBody, mesh: wallMesh };
+      // Play the note when the wall is created
+      if (audioContext && soundEnabled) {
+        playNoteForLength(audioContext, length, 0.5, 0.3);
+      }
+      
+      return { body: wallBody, mesh: wallMesh, note: note };
     }
     
     // Update temporary wall while drawing
@@ -240,12 +273,19 @@ export default function BounceScene() {
       const length = direction.length();
       const center = new THREE.Vector3().addVectors(wallStart, wallEnd).multiplyScalar(0.5);
       
+      // Update state for NoteDisplay component
+      setWallLength(length);
+      
       const wallDirection = direction.clone().normalize();
       const angle = Math.atan2(wallDirection.x, wallDirection.y);
       
+      // Get note based on current length
+      const note = mapLengthToNote(length);
+      const noteColor = getNoteColor(note);
+      
       const wallGeometry = new THREE.BoxGeometry(length, 0.2, 0.2);
       const wallMaterial = new THREE.MeshStandardMaterial({ 
-        color: 0xADD8E6,
+        color: noteColor, // Use note-based color
         transparent: true,
         opacity: 0.7,
         roughness: 0.8
@@ -278,7 +318,8 @@ export default function BounceScene() {
       
       // If shift is held, start drawing a wall
       if (event.shiftKey) {
-        isDrawing = true;
+        isDrawingInternal = true;
+        setIsDrawing(true); // Update state for NoteDisplay
         const intersection = new THREE.Vector3();
         raycaster.ray.intersectPlane(drawingPlane, intersection);
         wallStart = intersection.clone();
@@ -297,7 +338,7 @@ export default function BounceScene() {
       mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
       mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
       
-      if (isDrawing) {
+      if (isDrawingInternal) {
         raycaster.setFromCamera(mouse, camera);
         const intersection = new THREE.Vector3();
         raycaster.ray.intersectPlane(drawingPlane, intersection);
@@ -307,8 +348,9 @@ export default function BounceScene() {
     }
     
     function onMouseUp(event) {
-      if (isDrawing) {
-        isDrawing = false;
+      if (isDrawingInternal) {
+        isDrawingInternal = false;
+        setIsDrawing(false); // Update state for NoteDisplay
         // Only create a wall if it has some length
         if (wallStart.distanceTo(wallEnd) > 0.2) {
           createWall(wallStart, wallEnd);
@@ -468,9 +510,10 @@ export default function BounceScene() {
   return (
     <div className="scene-container" ref={mountRef} style={{ width: '100%', height: '100vh' }}>
       <div id="instructions">
-        <h2>Bounce Controls</h2>
+        <h2>Musical Bounce Controls</h2>
         <p>Click to drop balls</p>
         <p>Shift + Click + Drag to create walls</p>
+        <p>Wall length determines pitch (2 octaves of C major)</p>
         <div className="slider-container">
           <label htmlFor="bounciness-slider">Platform Bounciness:</label>
           <input 
@@ -488,6 +531,7 @@ export default function BounceScene() {
         </div>
       </div>
       <button id="sound-toggle" aria-label="Toggle sound">🔊</button>
+      <NoteDisplay isDrawing={isDrawing} wallLength={wallLength} />
     </div>
   );
 }
