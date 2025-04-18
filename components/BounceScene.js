@@ -10,11 +10,13 @@ import SettingsMenu from './SettingsMenu';
 
 export default function BounceScene() {
   const mountRef = useRef(null);
-  // Reference to contact material for accessing in slider handler
+  const cameraRef = useRef(null);
+  const dispensersRef = useRef([]);
   const contactMaterialRef = useRef(null);
-  // Store platform material for access from slider handler
-  const platformMaterialRef = useRef(null);
+  const collisionGroupsRef = useRef({ BALL: 1, ENVIRONMENT: 2 });
   
+  // State for UI indicators
+  const [isLoading, setIsLoading] = useState(true);
   // State for note display
   const [isDrawing, setIsDrawing] = useState(false);
   const [wallLength, setWallLength] = useState(0);
@@ -230,6 +232,18 @@ export default function BounceScene() {
       world.solver.iterations = 10; // Default is 10, increase for more accuracy
       world.solver.tolerance = 0.001; // Default is 0.001, lower for better accuracy
 
+      // Define collision groups - new addition for collision filtering
+      const COLLISION_GROUP_BALL = 1;
+      const COLLISION_GROUP_ENVIRONMENT = 2;
+      
+      // Store collision groups in ref for access in createBall and other functions
+      // Balls will only collide with environment objects, not with other balls
+      // This provides more predictable physics for user-designed contraptions
+      collisionGroupsRef.current = {
+        BALL: COLLISION_GROUP_BALL,
+        ENVIRONMENT: COLLISION_GROUP_ENVIRONMENT
+      };
+
       // Define default collision behavior
       world.defaultContactMaterial.contactEquationStiffness = 1e7; // Stiffer contacts for trampoline effect
       world.defaultContactMaterial.contactEquationRelaxation = 4; // More relaxation for stability
@@ -275,7 +289,8 @@ export default function BounceScene() {
       const groundBody = new CANNON.Body({
         type: CANNON.Body.STATIC,
         shape: new CANNON.Plane(),
-        material: platformMaterial // Assign platform material
+        material: platformMaterial, // Assign platform material
+        collisionFilterGroup: collisionGroupsRef.current.ENVIRONMENT // Set environment collision group
       });
       groundBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
       groundBody.position.y = -4; // Lower position to match expanded view
@@ -304,13 +319,17 @@ export default function BounceScene() {
     
     // Helper function to create boundary walls around the play area
     function createBoundary(x, y, length, width, rotX, rotY) {
+      // Get collision groups from ref
+      const { ENVIRONMENT } = collisionGroupsRef.current || { ENVIRONMENT: 2 };
+      
       // Create invisible physics boundary
       const boundaryShape = new CANNON.Box(new CANNON.Vec3(length/2, width/2, 1));
       const boundaryBody = new CANNON.Body({
         mass: 0, // Static body
         position: new CANNON.Vec3(x, y, -10), // Position far behind in z to allow free movement
         shape: boundaryShape,
-        material: platformMaterial
+        material: platformMaterial,
+        collisionFilterGroup: ENVIRONMENT // Set the collision group for environment objects
       });
       
       // Rotate the boundary
@@ -424,6 +443,9 @@ export default function BounceScene() {
       const radius = 0.1; // Smaller radius for golf ball
       const mass = 0.05; // Much lighter for golf ball
       
+      // Get collision groups from ref
+      const { BALL, ENVIRONMENT } = collisionGroupsRef.current;
+      
       // Physics body
       const sphereShape = new CANNON.Sphere(radius);
       const sphereBody = new CANNON.Body({
@@ -432,14 +454,16 @@ export default function BounceScene() {
         position: new CANNON.Vec3(position.x, position.y, position.z),
         material: ballMaterial,
         linearDamping: 0.01, // Small damping for realistic physics
-        angularDamping: 0.01 // Small angular damping too
+        angularDamping: 0.01, // Small angular damping too
+        collisionFilterGroup: BALL, // Set the collision group this body belongs to
+        collisionFilterMask: ENVIRONMENT // Set which groups this body can collide with (only environment, not other balls)
       });
       
       // Add initial velocity with slight randomness for more natural motion
       sphereBody.velocity.set(
         (Math.random() - 0.5) * 0.1,  // Small random X velocity
         -0.2 - Math.random() * 0.1,   // Downward Y velocity with randomness
-        (Math.random() - 0.5) * 0.1   // Small random Z velocity
+        0                             // No Z velocity for more consistent physics in VR
       );
       
       // Add a small random rotation too
@@ -555,6 +579,9 @@ export default function BounceScene() {
       const note = mapLengthToNote(length);
       const noteColor = getNoteColor(note);
       
+      // Get collision groups from ref
+      const { ENVIRONMENT } = collisionGroupsRef.current || { ENVIRONMENT: 2 };
+      
       // Create physical wall - trampoline properties
       const wallShape = new CANNON.Box(new CANNON.Vec3(length/2, 0.1, 0.5));
       const wallBody = new CANNON.Body({
@@ -562,6 +589,7 @@ export default function BounceScene() {
         position: new CANNON.Vec3(center.x, center.y, center.z),
         shape: wallShape,
         material: platformMaterial, // Assign platform material
+        collisionFilterGroup: ENVIRONMENT, // Set the collision group for environment objects
         // Add custom properties for trampoline-like behavior
         fixedRotation: true // Prevent rotation for stability
       });
