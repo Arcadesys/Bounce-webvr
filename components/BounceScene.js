@@ -308,7 +308,7 @@ export default function BounceScene() {
       const boundaryShape = new CANNON.Box(new CANNON.Vec3(length/2, width/2, 1));
       const boundaryBody = new CANNON.Body({
         mass: 0, // Static body
-        position: new CANNON.Vec3(x, y, 0),
+        position: new CANNON.Vec3(x, y, -10), // Position far behind in z to allow free movement
         shape: boundaryShape,
         material: platformMaterial
       });
@@ -556,7 +556,7 @@ export default function BounceScene() {
       const noteColor = getNoteColor(note);
       
       // Create physical wall - trampoline properties
-      const wallShape = new CANNON.Box(new CANNON.Vec3(length/2, 0.1, 0.1));
+      const wallShape = new CANNON.Box(new CANNON.Vec3(length/2, 0.1, 0.5));
       const wallBody = new CANNON.Body({
         mass: 0, // Static body
         position: new CANNON.Vec3(center.x, center.y, center.z),
@@ -581,7 +581,7 @@ export default function BounceScene() {
       wallBodies.push(wallBody);
       
       // Create visual wall
-      const wallGeometry = new THREE.BoxGeometry(length, 0.2, 0.2);
+      const wallGeometry = new THREE.BoxGeometry(length, 0.2, 0.5);
       const wallMaterial = new THREE.MeshStandardMaterial({ 
         color: noteColor, // Use note-based color
         roughness: 0.8,
@@ -636,7 +636,7 @@ export default function BounceScene() {
       const note = mapLengthToNote(length);
       const noteColor = getNoteColor(note);
       
-      const wallGeometry = new THREE.BoxGeometry(length, 0.2, 0.2);
+      const wallGeometry = new THREE.BoxGeometry(length, 0.2, 0.5);
       const wallMaterial = new THREE.MeshStandardMaterial({ 
         color: noteColor, // Use note-based color
         transparent: true,
@@ -720,6 +720,8 @@ export default function BounceScene() {
         // Otherwise, drop a ball
         const intersection = new THREE.Vector3();
         raycaster.ray.intersectPlane(drawingPlane, intersection);
+        // Add randomness to z-position to prevent balls from sticking to z=0 plane
+        intersection.z += (Math.random() - 0.5) * 1.0; // Add random value between -0.5 and 0.5
         const ball = createBall(intersection);
         balls.push(ball);
       }
@@ -916,7 +918,7 @@ export default function BounceScene() {
     setupEventListeners();
     animate();
     
-    // Create initial boundary walls to contain the balls
+    // Create initial boundary walls to contain the balls - moved far out in z-space
     createBoundary(-5, 0, 10, 0.2, 0, 0); // Left boundary
     createBoundary(5, 0, 10, 0.2, 0, 0);  // Right boundary
     
