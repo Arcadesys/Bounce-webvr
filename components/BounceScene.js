@@ -51,7 +51,7 @@ export default function BounceScene() {
     function initScene() {
       // Scene setup
       scene = new THREE.Scene();
-      scene.background = new THREE.Color(0x87CEEB); // Sky blue background
+      scene.background = new THREE.Color(0x000000); // Black background
       
       // Camera setup
       camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -158,7 +158,7 @@ export default function BounceScene() {
       const angle = Math.atan2(wallDirection.x, wallDirection.y);
       
       // Create physical wall
-      const wallShape = new CANNON.Box(new CANNON.Vec3(length/2, 0.5, 0.1));
+      const wallShape = new CANNON.Box(new CANNON.Vec3(length/2, 0.1, 0.1));
       const wallBody = new CANNON.Body({
         mass: 0, // Static body
         position: new CANNON.Vec3(center.x, center.y, center.z),
@@ -171,7 +171,7 @@ export default function BounceScene() {
       wallBodies.push(wallBody);
       
       // Create visual wall
-      const wallGeometry = new THREE.BoxGeometry(length, 1, 0.2);
+      const wallGeometry = new THREE.BoxGeometry(length, 0.2, 0.2);
       const wallMaterial = new THREE.MeshStandardMaterial({ 
         color: 0x8B4513,
         roughness: 0.8,
@@ -201,7 +201,7 @@ export default function BounceScene() {
       const wallDirection = direction.clone().normalize();
       const angle = Math.atan2(wallDirection.x, wallDirection.y);
       
-      const wallGeometry = new THREE.BoxGeometry(length, 1, 0.2);
+      const wallGeometry = new THREE.BoxGeometry(length, 0.2, 0.2);
       const wallMaterial = new THREE.MeshStandardMaterial({ 
         color: 0xADD8E6,
         transparent: true,
