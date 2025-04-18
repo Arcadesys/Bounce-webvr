@@ -1,18 +1,41 @@
 import * as Tone from 'tone';
 
-// Default synth settings
-const DEFAULT_SYNTH_SETTINGS = {
-  oscillator: {
-    type: 'sine',
+// Instrument prefabs
+const INSTRUMENT_PREFABS = {
+  marimba: {
+    oscillator: { type: 'sine' },
+    envelope: { attack: 0.01, decay: 0.3, sustain: 0.1, release: 0.3 },
+    volume: -8
   },
-  envelope: {
-    attack: 0.01,   // Much faster attack
-    decay: 0.1,     // Shorter decay
-    sustain: 0.1,   // Very little sustain
-    release: 0.1,   // Quick release
+  epiano: {
+    oscillator: { type: 'triangle' },
+    envelope: { attack: 0.03, decay: 0.5, sustain: 0.4, release: 0.7 },
+    volume: -10
   },
-  volume: -10,
+  glockenspiel: {
+    oscillator: { type: 'sine' },
+    envelope: { attack: 0.001, decay: 0.1, sustain: 0.05, release: 0.2 },
+    volume: -12
+  },
+  vibraphone: {
+    oscillator: { type: 'sine' },
+    envelope: { attack: 0.05, decay: 0.2, sustain: 0.4, release: 1.0 },
+    volume: -9
+  },
+  kalimba: {
+    oscillator: { type: 'triangle' },
+    envelope: { attack: 0.005, decay: 0.1, sustain: 0.05, release: 0.3 },
+    volume: -11
+  },
+  xylophone: {
+    oscillator: { type: 'sine' },
+    envelope: { attack: 0.001, decay: 0.15, sustain: 0.01, release: 0.1 },
+    volume: -10
+  }
 };
+
+// Default synth settings
+const DEFAULT_SYNTH_SETTINGS = INSTRUMENT_PREFABS.marimba;
 
 // Singleton instance of the synth
 let synthInstance = null;
@@ -31,9 +54,25 @@ export function initSynth(settings = null) {
   }
   
   // Use provided settings or load from localStorage or use defaults
-  const synthSettings = settings || 
-    JSON.parse(localStorage.getItem('customSynthSettings')) || 
-    DEFAULT_SYNTH_SETTINGS;
+  let synthSettings = settings;
+  
+  if (!synthSettings) {
+    // Try to load saved settings
+    const savedSettings = localStorage.getItem('customSynthSettings');
+    
+    if (savedSettings) {
+      synthSettings = JSON.parse(savedSettings);
+    } else {
+      // Try to load current instrument
+      const currentInstrument = localStorage.getItem('currentInstrument');
+      
+      if (currentInstrument && INSTRUMENT_PREFABS[currentInstrument]) {
+        synthSettings = INSTRUMENT_PREFABS[currentInstrument];
+      } else {
+        synthSettings = DEFAULT_SYNTH_SETTINGS;
+      }
+    }
+  }
   
   // Create new synth instance
   synthInstance = new Tone.Synth(synthSettings).toDestination();
@@ -218,5 +257,5 @@ export function playModeChangeSound(drawMode) {
   }, 300);
 }
 
-// Export default settings for reference
-export { DEFAULT_SYNTH_SETTINGS }; 
+// Export default settings and instrument prefabs for reference
+export { DEFAULT_SYNTH_SETTINGS, INSTRUMENT_PREFABS }; 

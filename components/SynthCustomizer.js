@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import * as Tone from 'tone';
+import { INSTRUMENT_PREFABS } from '../utils/synthManager';
 
 /**
  * SynthCustomizer Component
@@ -7,18 +8,14 @@ import * as Tone from 'tone';
  * with accessibility features for low vision users
  */
 export default function SynthCustomizer({ onClose }) {
-  const [synthParams, setSynthParams] = useState({
-    oscillator: {
-      type: 'sine', // sine, square, triangle, sawtooth
-    },
-    envelope: {
-      attack: 0.1,
-      decay: 0.2,
-      sustain: 0.5,
-      release: 0.8,
-    },
-    volume: -10,
-  });
+  // Get saved instrument or default to marimba
+  const savedInstrument = typeof localStorage !== 'undefined' ? 
+    localStorage.getItem('currentInstrument') : null;
+  const initialInstrument = (savedInstrument && INSTRUMENT_PREFABS[savedInstrument]) ? 
+    savedInstrument : 'marimba';
+  
+  const [currentInstrument, setCurrentInstrument] = useState(initialInstrument);
+  const [synthParams, setSynthParams] = useState(INSTRUMENT_PREFABS[initialInstrument]);
   
   const [isPlaying, setIsPlaying] = useState(false);
   const synthRef = useRef(null);
@@ -53,21 +50,16 @@ export default function SynthCustomizer({ onClose }) {
     }
   }, [synthParams]);
   
-  // Handle parameter changes
-  const handleParamChange = (category, param, value) => {
-    setSynthParams(prev => ({
-      ...prev,
-      [category]: {
-        ...prev[category],
-        [param]: value
-      }
-    }));
+  // Select instrument prefab
+  const selectInstrument = (instrument) => {
+    setCurrentInstrument(instrument);
+    setSynthParams(INSTRUMENT_PREFABS[instrument]);
     
-    // Play a test note when changing parameters
-    playTestNote();
+    // Play a test note to preview the instrument
+    setTimeout(playTestNote, 100);
     
-    // Play a guide tone for accessibility
-    playGuideTone(value);
+    // Play guide tone for accessibility
+    playGuideTone(0.5);
   };
   
   // Handle volume change
@@ -151,6 +143,7 @@ export default function SynthCustomizer({ onClose }) {
   const applySettings = () => {
     // Save synth settings to localStorage
     localStorage.setItem('customSynthSettings', JSON.stringify(synthParams));
+    localStorage.setItem('currentInstrument', currentInstrument);
     
     // Play a success sound
     playSuccessSound();
@@ -180,88 +173,21 @@ export default function SynthCustomizer({ onClose }) {
 
   return (
     <div className="synth-customizer">
-      <h2>Paddle Sound Customizer</h2>
+      <h2>Bar Sound Customizer</h2>
       
       <div className="control-group">
-        <h3>Oscillator Type</h3>
-        <div className="control-row">
-          {['sine', 'square', 'triangle', 'sawtooth'].map(type => (
+        <h3>Instrument Type</h3>
+        <div className="instrument-buttons">
+          {Object.keys(INSTRUMENT_PREFABS).map(instrument => (
             <button 
-              key={type}
-              className={synthParams.oscillator.type === type ? 'active' : ''}
-              onClick={() => handleParamChange('oscillator', 'type', type)}
-              aria-pressed={synthParams.oscillator.type === type}
+              key={instrument}
+              className={currentInstrument === instrument ? 'active' : ''}
+              onClick={() => selectInstrument(instrument)}
+              aria-pressed={currentInstrument === instrument}
             >
-              {type.charAt(0).toUpperCase() + type.slice(1)}
+              {instrument.charAt(0).toUpperCase() + instrument.slice(1)}
             </button>
           ))}
-        </div>
-      </div>
-      
-      <div className="control-group">
-        <h3>Envelope</h3>
-        <div className="control-row">
-          <label>
-            Attack
-            <input 
-              type="range" 
-              min="0.01" 
-              max="2" 
-              step="0.01" 
-              value={synthParams.envelope.attack} 
-              onChange={(e) => handleParamChange('envelope', 'attack', parseFloat(e.target.value))}
-              aria-label="Attack time in seconds"
-            />
-            <span>{synthParams.envelope.attack.toFixed(2)}s</span>
-          </label>
-        </div>
-        
-        <div className="control-row">
-          <label>
-            Decay
-            <input 
-              type="range" 
-              min="0.01" 
-              max="2" 
-              step="0.01" 
-              value={synthParams.envelope.decay} 
-              onChange={(e) => handleParamChange('envelope', 'decay', parseFloat(e.target.value))}
-              aria-label="Decay time in seconds"
-            />
-            <span>{synthParams.envelope.decay.toFixed(2)}s</span>
-          </label>
-        </div>
-        
-        <div className="control-row">
-          <label>
-            Sustain
-            <input 
-              type="range" 
-              min="0" 
-              max="1" 
-              step="0.01" 
-              value={synthParams.envelope.sustain} 
-              onChange={(e) => handleParamChange('envelope', 'sustain', parseFloat(e.target.value))}
-              aria-label="Sustain level"
-            />
-            <span>{synthParams.envelope.sustain.toFixed(2)}</span>
-          </label>
-        </div>
-        
-        <div className="control-row">
-          <label>
-            Release
-            <input 
-              type="range" 
-              min="0.01" 
-              max="4" 
-              step="0.01" 
-              value={synthParams.envelope.release} 
-              onChange={(e) => handleParamChange('envelope', 'release', parseFloat(e.target.value))}
-              aria-label="Release time in seconds"
-            />
-            <span>{synthParams.envelope.release.toFixed(2)}s</span>
-          </label>
         </div>
       </div>
       
