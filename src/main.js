@@ -223,80 +223,54 @@ export function createBall(position) {
   return { body: ballBody, mesh: ballMesh };
 }
 
-// Create a wall between two points
+// Create a wall between two points - completely rebuilt for simplicity
 export function createWall(start, end) {
-  // Calculate length for notes
+  // Get length for note mapping
   const length = start.distanceTo(end);
   
-  // Get note information
+  // Map to note and get color
   const note = mapLengthToNote(length);
   const noteColor = getNoteColor(note);
   
-  // First, let's create visible points at each end
-  const sphereGeometry = new THREE.SphereGeometry(0.1, 16, 16);
-  const sphereMaterial = new THREE.MeshStandardMaterial({ color: noteColor });
+  // Create a simple rectangular wall using EdgesGeometry
+  // First, create a line between the two points
+  const points = [
+    new THREE.Vector3(start.x, start.y, start.z),
+    new THREE.Vector3(end.x, end.y, end.z)
+  ];
   
-  // Start point sphere
-  const startSphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
-  startSphere.position.copy(start);
-  scene.add(startSphere);
+  // Create a path from these points
+  const path = new THREE.LineCurve3(points[0], points[1]);
   
-  // End point sphere
-  const endSphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
-  endSphere.position.copy(end);
-  scene.add(endSphere);
+  // Use TubeGeometry which follows the path with given radius
+  const wallHeight = 1.0;
+  const wallGeometry = new THREE.TubeGeometry(path, 1, wallHeight/2, 8, false);
   
-  // Create a cyliner between the points
-  // We need to position and orient the cylinder to connect the points
-  const direction = new THREE.Vector3().subVectors(end, start);
-  const midpoint = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
-  
-  // Use cylinder geometry for the wall
-  const radius = 0.15;
-  const cylinderGeometry = new THREE.CylinderGeometry(radius, radius, length, 12);
-  const cylinderMaterial = new THREE.MeshStandardMaterial({ 
+  // Create material
+  const wallMaterial = new THREE.MeshStandardMaterial({ 
     color: noteColor,
     roughness: 0.8,
     metalness: 0.2
   });
   
-  // Create the cylinder mesh
-  const wallMesh = new THREE.Mesh(cylinderGeometry, cylinderMaterial);
-  
-  // Position the cylinder
-  wallMesh.position.copy(midpoint);
-  
-  // Orient the cylinder to point from start to end
-  // Cylinders in Three.js are aligned along the Y-axis by default
-  // so we need to rotate to align with our direction vector
-  const quaternion = new THREE.Quaternion();
-  // Default cylinder orientation (up along y-axis)
-  const up = new THREE.Vector3(0, 1, 0);
-  // Normalize our direction
-  direction.normalize();
-  // Get the quaternion to rotate from up to our direction
-  quaternion.setFromUnitVectors(up, direction);
-  // Apply rotation
-  wallMesh.setRotationFromQuaternion(quaternion);
-  
+  // Create mesh
+  const wallMesh = new THREE.Mesh(wallGeometry, wallMaterial);
   wallMesh.castShadow = true;
   wallMesh.receiveShadow = true;
   scene.add(wallMesh);
+  walls.push(wallMesh);
   
-  // Store all meshes for this wall
-  const allMeshes = [wallMesh, startSphere, endSphere];
-  walls.push(...allMeshes);
+  // Create a simple physics body - just a box between the points
+  const center = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
+  const direction = new THREE.Vector3().subVectors(end, start);
+  const angle = Math.atan2(direction.y, direction.x);
   
-  // Create physics body
-  const wallShape = new CANNON.Cylinder(radius, radius, length, 8);
+  const wallShape = new CANNON.Box(new CANNON.Vec3(length/2, wallHeight/2, wallHeight/2));
   const wallBody = new CANNON.Body({
     mass: 0, // Static body
-    position: new CANNON.Vec3(midpoint.x, midpoint.y, midpoint.z),
+    position: new CANNON.Vec3(center.x, center.y, center.z),
     shape: wallShape,
   });
-  
-  // Orient the physics body
-  wallBody.quaternion.copy(quaternion);
   
   // Store note information with the wall body
   wallBody.userData = {
@@ -304,6 +278,8 @@ export function createWall(start, end) {
     length: length
   };
   
+  // Rotate physics body to align with the wall direction
+  wallBody.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 0, 1), angle);
   world.addBody(wallBody);
   wallBodies.push(wallBody);
   
@@ -312,34 +288,48 @@ export function createWall(start, end) {
     playNoteForLength(audioContext, length, 0.5, 0.3);
   }
   
-  return { body: wallBody, mesh: wallMesh, note: note, allMeshes: allMeshes };
+  return { body: wallBody, mesh: wallMesh, note: note };
 }
 
-// Update temporary wall while drawing
+// Update temporary wall while drawing - using the simpler approach
 function updateTempWall() {
   if (currentWallMesh) {
     scene.remove(currentWallMesh);
-    currentWallMesh = null;
   }
   
-  // Calculate length
+  // Get length
   const length = wallStart.distanceTo(wallEnd);
   
   // If points are too close, don't draw anything
   if (length < 0.1) return;
   
-  // Create a simple line preview
-  const lineGeometry = new THREE.BufferGeometry().setFromPoints([
-    wallStart.clone(),
-    wallEnd.clone()
-  ]);
+  // Get note based on current length
+  const note = mapLengthToNote(length);
+  const noteColor = getNoteColor(note);
   
-  const lineMaterial = new THREE.LineBasicMaterial({ 
-    color: 0xffffff,
-    linewidth: 3
+  // Create a path between the two points
+  const points = [
+    new THREE.Vector3(wallStart.x, wallStart.y, wallStart.z),
+    new THREE.Vector3(wallEnd.x, wallEnd.y, wallEnd.z)
+  ];
+  
+  // Create a path and tube geometry
+  const path = new THREE.LineCurve3(points[0], points[1]);
+  const wallHeight = 1.0;
+  const tempWallGeometry = new THREE.TubeGeometry(path, 1, wallHeight/2, 8, false);
+  
+  // Create material
+  const tempWallMaterial = new THREE.MeshStandardMaterial({ 
+    color: noteColor,
+    transparent: true,
+    opacity: 0.7,
+    roughness: 0.8
   });
   
-  currentWallMesh = new THREE.Line(lineGeometry, lineMaterial);
+  // Create mesh
+  currentWallMesh = new THREE.Mesh(tempWallGeometry, tempWallMaterial);
+  currentWallMesh.castShadow = true;
+  currentWallMesh.receiveShadow = true;
   scene.add(currentWallMesh);
 }
 
@@ -371,17 +361,7 @@ function onMouseDown(event) {
     const intersection = new THREE.Vector3();
     raycaster.ray.intersectPlane(drawingPlane, intersection);
     
-    // Create debug sphere to mark click position
-    const markerGeometry = new THREE.SphereGeometry(0.1, 8, 8);
-    const markerMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-    const marker = new THREE.Mesh(markerGeometry, markerMaterial);
-    marker.position.copy(intersection);
-    scene.add(marker);
-    setTimeout(() => scene.remove(marker), 2000); // Remove after 2 seconds
-    
-    console.log("Mouse DOWN at:", intersection.x, intersection.y, intersection.z);
-    
-    // Start drawing a wall
+    // Start drawing a wall - set FIRST endpoint exactly at click position
     isDrawing = true;
     wallStart = intersection.clone();
     wallEnd = intersection.clone(); // Initially same as start
@@ -403,6 +383,8 @@ function onMouseMove(event) {
     raycaster.setFromCamera(mouse, camera);
     const intersection = new THREE.Vector3();
     raycaster.ray.intersectPlane(drawingPlane, intersection);
+    
+    // Update the SECOND endpoint continuously during drag
     wallEnd = intersection;
     updateTempWall();
   }
@@ -418,52 +400,11 @@ function onMouseUp(event) {
     // Set the SECOND endpoint exactly at release position
     const intersection = new THREE.Vector3();
     raycaster.ray.intersectPlane(drawingPlane, intersection);
-    
-    // Create debug sphere to mark release position
-    const markerGeometry = new THREE.SphereGeometry(0.1, 8, 8);
-    const markerMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
-    const marker = new THREE.Mesh(markerGeometry, markerMaterial);
-    marker.position.copy(intersection);
-    scene.add(marker);
-    setTimeout(() => scene.remove(marker), 2000); // Remove after 2 seconds
-    
-    console.log("Mouse UP at:", intersection.x, intersection.y, intersection.z);
-    
     wallEnd = intersection;
     
-    // Create a direct line between points instead of fancy geometry
+    // Only create a wall if it has some length
     if (wallStart.distanceTo(wallEnd) > 0.2) {
-      console.log("Creating line from", wallStart, "to", wallEnd);
-      
-      // Create a direct line between the two points
-      const lineGeometry = new THREE.BufferGeometry().setFromPoints([
-        wallStart.clone(),
-        wallEnd.clone()
-      ]);
-      const lineMaterial = new THREE.LineBasicMaterial({ 
-        color: 0xffffff,
-        linewidth: 5
-      });
-      const line = new THREE.Line(lineGeometry, lineMaterial);
-      scene.add(line);
-      
-      // Store the line
-      walls.push(line);
-      
-      // Add spheres at endpoints
-      const sphereGeometry = new THREE.SphereGeometry(0.1);
-      const startSphere = new THREE.Mesh(sphereGeometry, new THREE.MeshBasicMaterial({ color: 0xff0000 }));
-      startSphere.position.copy(wallStart);
-      scene.add(startSphere);
-      
-      const endSphere = new THREE.Mesh(sphereGeometry, new THREE.MeshBasicMaterial({ color: 0x00ff00 }));
-      endSphere.position.copy(wallEnd);
-      scene.add(endSphere);
-      
-      walls.push(startSphere, endSphere);
-      
-      // Skip complex wall creation for now
-      // createWall(wallStart, wallEnd);
+      createWall(wallStart, wallEnd);
     }
     
     // Remove temporary wall
@@ -566,18 +507,16 @@ function animate() {
   
   // Update visual objects to match physics
   for (let i = 0; i < balls.length; i++) {
-    if (balls[i] && balls[i].body && balls[i].mesh) {
-      balls[i].mesh.position.copy(balls[i].body.position);
-      balls[i].mesh.quaternion.copy(balls[i].body.quaternion);
-      
-      // Remove balls that hit the ground or fall too far
-      if ((balls[i].body.userData && balls[i].body.userData.shouldRemove) || 
-          balls[i].body.position.y < -10) {
-        scene.remove(balls[i].mesh);
-        world.removeBody(balls[i].body);
-        balls.splice(i, 1);
-        i--;
-      }
+    balls[i].mesh.position.copy(balls[i].body.position);
+    balls[i].mesh.quaternion.copy(balls[i].body.quaternion);
+    
+    // Remove balls that hit the ground or fall too far
+    if ((balls[i].body.userData && balls[i].body.userData.shouldRemove) || 
+        balls[i].body.position.y < -10) {
+      scene.remove(balls[i].mesh);
+      world.removeBody(balls[i].body);
+      balls.splice(i, 1);
+      i--;
     }
   }
   
@@ -585,4 +524,3 @@ function animate() {
 }
 
 animate(); // Test comment
-console.log('Test: The file was updated');

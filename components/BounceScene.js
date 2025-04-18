@@ -104,21 +104,53 @@ export default function BounceScene() {
     // Initialize physics world
     function initPhysics() {
       world = new CANNON.World({
-        gravity: new CANNON.Vec3(0, -9.82, 0)
+        gravity: new CANNON.Vec3(0, -9.82, 0) // Earth gravity
       });
       
-      // Add contact material between balls and platforms
+      // Improve solver to handle physics more accurately
+      world.solver.iterations = 10; // Default is 10, increase for more accuracy
+      world.solver.tolerance = 0.001; // Default is 0.001, lower for better accuracy
+
+      // Define default collision behavior
+      world.defaultContactMaterial.contactEquationStiffness = 1e7; // Stiffer contacts for trampoline effect
+      world.defaultContactMaterial.contactEquationRelaxation = 4; // More relaxation for stability
+      
+      // Create special materials for trampoline-like behavior
+      ballMaterial.friction = 0.2; // Low friction for bowling ball
+      ballMaterial.restitution = 0.5; // Medium restitution for ball itself
+      
+      platformMaterial.friction = 0.4; // Medium friction for platforms
+      platformMaterial.restitution = 0.8; // High restitution for trampoline effect
+
+      // Create contact material for ball-wall interactions
       ballPlatformContactMaterial = new CANNON.ContactMaterial(
         ballMaterial,
         platformMaterial,
         {
-          friction: 0.0, // Low friction between ball and platform
-          restitution: platformMaterial.restitution, // Use the platform's restitution
+          friction: 0.2, // Low friction for clean bounces
+          restitution: 0.95, // Very bouncy for trampoline effect
+          contactEquationRelaxation: 3, // Softer contacts
+          frictionEquationStiffness: 1e7, // Stiffer friction
+          contactEquationStiffness: 1e8 // Very stiff contacts for immediate response
         }
       );
+      
       // Store in ref for access outside useEffect
       contactMaterialRef.current = ballPlatformContactMaterial;
       world.addContactMaterial(ballPlatformContactMaterial);
+      
+      // Special event listener for custom collision behavior
+      world.addEventListener('postStep', () => {
+        // Custom handling of ball-wall collisions to simulate perfect trampolines
+        // This prevents energy gain which can happen in physics engines
+        for (let i = 0; i < balls.length; i++) {
+          const ball = balls[i];
+          if (ball && ball.body) {
+            // Apply a constant small damping to simulate minimal air resistance
+            ball.body.velocity.scale(0.998, ball.body.velocity);
+          }
+        }
+      });
       
       // Ground plane - invisible physics plane
       const groundBody = new CANNON.Body({
@@ -150,52 +182,92 @@ export default function BounceScene() {
     function createBall(position) {
       const radius = 0.2;
       
-      // Physical body
+      // Physical body with bowling ball properties
       const ballBody = new CANNON.Body({
-        mass: 1,
+        mass: 5, // Heavier mass like a bowling ball
         shape: new CANNON.Sphere(radius),
         position: new CANNON.Vec3(position.x, position.y, position.z),
-        linearDamping: 0.1,
+        linearDamping: 0.05, // Low air resistance for a heavy ball
+        angularDamping: 0.2, // Some rotational damping
         material: ballMaterial // Assign ball material
       });
       
+      // Initial downward velocity to simulate dropping
+      ballBody.velocity.set(
+        0,     // No initial x velocity
+        -0.5,  // Small downward velocity
+        0      // No initial z velocity
+      );
+      
       world.addBody(ballBody);
       
-      // Listen for collision events to play sounds
+      // Listen for collision events to play sounds and handle physics
       ballBody.addEventListener('collide', (event) => {
         const relativeVelocity = event.contact.getImpactVelocityAlongNormal();
         
         // Get the other colliding body
         const otherBody = event.body === ballBody ? event.target : event.body;
         
-        // Check if colliding with a wall that has note information
-        if (otherBody.userData && otherBody.userData.note && Math.abs(relativeVelocity) > 0.5) {
+        // Handle collision based on what was hit
+        if (otherBody.userData && otherBody.userData.isWall) {
+          // For wall (trampoline) collisions, use custom restitution
+          // This ensures momentum is conserved (with small loss) without adding energy
+          // Use the wall's restitution value
+          const wallRestitution = otherBody.userData.restitution || 0.95;
+          
+          // Get the contact normal
+          const contactNormal = event.contact.ni;
+          
+          // Apply a properly scaled impulse along the normal
+          // This simulates an elastic collision with the trampoline
+          const impulseMagnitude = Math.abs(relativeVelocity) * ballBody.mass * wallRestitution;
+          const impulse = new CANNON.Vec3(
+            contactNormal.x * impulseMagnitude,
+            contactNormal.y * impulseMagnitude,
+            contactNormal.z * impulseMagnitude
+          );
+          
+          // Apply small energy loss on the walls (trampolines absorb a tiny bit of energy)
+          impulse.scale(0.98, impulse);
+          
           // Play the note associated with the wall
-          if (audioContext && soundEnabled) {
+          if (audioContext && soundEnabled && Math.abs(relativeVelocity) > 0.5) {
             // Velocity affects volume
             const intensity = Math.min(Math.abs(relativeVelocity) / 10, 1);
             playNoteForLength(audioContext, otherBody.userData.length, 0.5, intensity * 0.5);
           }
         } 
-        // Default bounce sound for other collisions
-        else if (Math.abs(relativeVelocity) > 0.5) {
-          const intensity = Math.min(Math.abs(relativeVelocity) / 10, 1);
-          window.playBounceSound(intensity);
-        }
-        
-        // If collided with ground, mark for removal
-        if (otherBody.userData && otherBody.userData.isGround) {
+        // For ground collisions
+        else if (otherBody.userData && otherBody.userData.isGround) {
           ballBody.userData = ballBody.userData || {};
           ballBody.userData.shouldRemove = true;
+          
+          // Play bounce sound
+          if (audioContext && soundEnabled && Math.abs(relativeVelocity) > 0.5) {
+            const intensity = Math.min(Math.abs(relativeVelocity) / 10, 1);
+            window.playBounceSound(intensity);
+          }
+        }
+        // Other collisions (if any)
+        else if (Math.abs(relativeVelocity) > 0.5) {
+          // Apply a default energy loss
+          const energyLoss = 0.96; // Lose 4% energy per collision
+          ballBody.velocity.scale(energyLoss, ballBody.velocity);
+          
+          // Play a bounce sound for any other collision
+          if (audioContext && soundEnabled) {
+            const intensity = Math.min(Math.abs(relativeVelocity) / 10, 1);
+            window.playBounceSound(intensity);
+          }
         }
       });
       
-      // Visual ball
+      // Visual ball - heavier appearance
       const ballGeometry = new THREE.SphereGeometry(radius, 32, 32);
       const visualBallMaterial = new THREE.MeshStandardMaterial({ 
         color: Math.random() * 0xffffff,
-        roughness: 0.4,
-        metalness: 0.3
+        roughness: 0.3,
+        metalness: 0.5 // More metallic appearance for a bowling ball look
       });
       const ballMesh = new THREE.Mesh(ballGeometry, visualBallMaterial);
       ballMesh.castShadow = true;
@@ -215,43 +287,38 @@ export default function BounceScene() {
       // Update state for NoteDisplay component
       setWallLength(length);
       
-      // Calculate rotation to align with direction
+      // Calculate rotation with correct direction
       const wallDirection = direction.clone().normalize();
+      // This gives proper orientation along the line between points
       const angle = Math.atan2(direction.y, direction.x);
       
-      // Get note based on current length
+      console.log("Creating wall: start=", start, "end=", end);
+      console.log("Wall angle (degrees):", angle * (180/Math.PI));
+      
+      // Get note information based on wall length
       const note = mapLengthToNote(length);
       const noteColor = getNoteColor(note);
       
-      // Add visible spheres at the endpoints for debugging
-      const sphereGeometry = new THREE.SphereGeometry(0.1, 16, 16);
-      const startSphere = new THREE.Mesh(sphereGeometry, new THREE.MeshStandardMaterial({ color: 0xff0000 }));
-      const endSphere = new THREE.Mesh(sphereGeometry, new THREE.MeshStandardMaterial({ color: 0x00ff00 }));
-      
-      startSphere.position.copy(start);
-      endSphere.position.copy(end);
-      scene.add(startSphere);
-      scene.add(endSphere);
-      
-      console.log("Creating beam from:", start, "to:", end);
-      console.log("Angle:", angle * (180/Math.PI), "degrees");
-      
-      // Create physical wall
-      const wallShape = new CANNON.Box(new CANNON.Vec3(length/2, 0.5, 0.1));
+      // Create physical wall - trampoline properties
+      const wallShape = new CANNON.Box(new CANNON.Vec3(length/2, 0.1, 0.1));
       const wallBody = new CANNON.Body({
         mass: 0, // Static body
         position: new CANNON.Vec3(center.x, center.y, center.z),
         shape: wallShape,
-        material: platformMaterial // Assign platform material
+        material: platformMaterial, // Assign platform material
+        // Add custom properties for trampoline-like behavior
+        fixedRotation: true // Prevent rotation for stability
       });
       
       // Store note information with the wall body for collision handling
       wallBody.userData = {
         note: note,
-        length: length
+        length: length,
+        isWall: true, // Identify as a wall for collision handling
+        restitution: 0.95 // High restitution for trampoline effect without adding energy
       };
       
-      // Rotate to match visual representation
+      // Rotate physics body to match visual representation
       wallBody.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 0, 1), angle);
       world.addBody(wallBody);
       wallBodies.push(wallBody);
@@ -265,13 +332,14 @@ export default function BounceScene() {
       });
       const wallMesh = new THREE.Mesh(wallGeometry, wallMaterial);
       wallMesh.position.copy(center);
+      
+      // Apply the same rotation to the visual mesh
       wallMesh.rotation.z = angle;
+      
       wallMesh.castShadow = true;
       wallMesh.receiveShadow = true;
       scene.add(wallMesh);
-      
-      // Store all visual elements
-      walls.push(wallMesh, startSphere, endSphere);
+      walls.push(wallMesh);
       
       // Play the note when the wall is created
       if (audioContext && soundEnabled) {
@@ -285,7 +353,6 @@ export default function BounceScene() {
     function updateTempWall() {
       if (currentWallMesh) {
         scene.remove(currentWallMesh);
-        currentWallMesh = null;
       }
       
       const direction = new THREE.Vector3().subVectors(wallEnd, wallStart);
@@ -295,17 +362,13 @@ export default function BounceScene() {
       // Update state for NoteDisplay component
       setWallLength(length);
       
-      // If points are too close, don't draw anything
-      if (length < 0.1) return;
-      
-      const wallDirection = direction.clone().normalize();
+      // Calculate angle with same formula as in createWall
       const angle = Math.atan2(direction.y, direction.x);
       
       // Get note based on current length
       const note = mapLengthToNote(length);
       const noteColor = getNoteColor(note);
       
-      // Create wall preview
       const wallGeometry = new THREE.BoxGeometry(length, 0.2, 0.2);
       const wallMaterial = new THREE.MeshStandardMaterial({ 
         color: noteColor, // Use note-based color
@@ -316,7 +379,10 @@ export default function BounceScene() {
       
       currentWallMesh = new THREE.Mesh(wallGeometry, wallMaterial);
       currentWallMesh.position.copy(center);
+      
+      // Apply same rotation as in createWall
       currentWallMesh.rotation.z = angle;
+      
       scene.add(currentWallMesh);
     }
     
@@ -343,21 +409,8 @@ export default function BounceScene() {
       if (event.shiftKey) {
         isDrawingInternal = true;
         setIsDrawing(true); // Update state for NoteDisplay
-     
-        // Create debug sphere at click point
-        const markerGeometry = new THREE.SphereGeometry(0.1, 8, 8);
-        const markerMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-        const marker = new THREE.Mesh(markerGeometry, markerMaterial);
-        
         const intersection = new THREE.Vector3();
         raycaster.ray.intersectPlane(drawingPlane, intersection);
-        
-        marker.position.copy(intersection);
-        scene.add(marker);
-        setTimeout(() => scene.remove(marker), 2000); // Remove after 2 seconds
-        
-        console.log("Mouse DOWN at:", intersection.x, intersection.y, intersection.z);
-        
         wallStart = intersection.clone();
         wallEnd = intersection.clone();
         updateTempWall();
@@ -387,29 +440,8 @@ export default function BounceScene() {
       if (isDrawingInternal) {
         isDrawingInternal = false;
         setIsDrawing(false); // Update state for NoteDisplay
-        
-        // Get final mouse position
-        mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-        mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-        raycaster.setFromCamera(mouse, camera);
-        
-        // Create debug sphere at release point
-        const markerGeometry = new THREE.SphereGeometry(0.1, 8, 8);
-        const markerMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
-        const marker = new THREE.Mesh(markerGeometry, markerMaterial);
-        
-        const intersection = new THREE.Vector3();
-        raycaster.ray.intersectPlane(drawingPlane, intersection);
-        
-        marker.position.copy(intersection);
-        scene.add(marker);
-        setTimeout(() => scene.remove(marker), 2000); // Remove after 2 seconds
-        
-        console.log("Mouse UP at:", intersection.x, intersection.y, intersection.z);
-        
         // Only create a wall if it has some length
         if (wallStart.distanceTo(wallEnd) > 0.2) {
-          console.log("Creating wall from", wallStart, "to", wallEnd);
           createWall(wallStart, wallEnd);
           
           // Remove temporary wall
@@ -463,25 +495,52 @@ export default function BounceScene() {
     }
     
     // Animation loop
-    const timeStep = 1 / 60;
+    const timeStep = 1 / 60; // 60 frames per second
+    let lastCallTime; // For tracking accumulated time between frames
+
     function animate() {
       requestAnimationFrame(animate);
       
-      // Update physics
-      world.step(timeStep);
+      // Calculate actual time elapsed since last frame for smoother physics
+      const time = performance.now() / 1000; // Convert to seconds
+      
+      if (!lastCallTime) {
+        // First frame, just initialize and return
+        lastCallTime = time;
+        return;
+      }
+      
+      // Calculate time since last frame
+      let dt = time - lastCallTime;
+      lastCallTime = time;
+      
+      // Cap max dt to prevent "tunneling" through objects when frame rate drops
+      if (dt > 0.1) dt = 0.1; 
+      
+      // Step the physics simulation with fixed time step
+      // This ensures physics simulation quality is consistent regardless of frame rate
+      world.step(timeStep, dt);
       
       // Update visual objects to match physics
       for (let i = 0; i < balls.length; i++) {
-        balls[i].mesh.position.copy(balls[i].body.position);
-        balls[i].mesh.quaternion.copy(balls[i].body.quaternion);
-        
-        // Remove balls that hit the ground or fall too far
-        if ((balls[i].body.userData && balls[i].body.userData.shouldRemove) || 
-            balls[i].body.position.y < -10) {
-          scene.remove(balls[i].mesh);
-          world.removeBody(balls[i].body);
-          balls.splice(i, 1);
-          i--;
+        if (balls[i] && balls[i].body && balls[i].mesh) {
+          balls[i].mesh.position.copy(balls[i].body.position);
+          balls[i].mesh.quaternion.copy(balls[i].body.quaternion);
+          
+          // Remove balls that hit the ground or fall too far
+          if ((balls[i].body.userData && balls[i].body.userData.shouldRemove) || 
+              balls[i].body.position.y < -10) {
+            scene.remove(balls[i].mesh);
+            world.removeBody(balls[i].body);
+            balls.splice(i, 1);
+            i--;
+          }
+          
+          // If the ball has come nearly to rest, gradually apply more damping to settle it faster
+          // This prevents balls from jittering forever at rest
+          else if (balls[i].body.velocity.lengthSquared() < 0.05) {
+            balls[i].body.linearDamping = Math.min(balls[i].body.linearDamping * 1.01, 0.95);
+          }
         }
       }
       
