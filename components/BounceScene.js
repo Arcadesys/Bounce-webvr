@@ -334,12 +334,13 @@ export default function BounceScene() {
     // Create a dispenser with 16-step sequencer
     function createDispenser(position) {
       // Create visual indicator for dispenser
-      const geometry = new THREE.CylinderGeometry(0.3, 0.3, 0.5, 16);
+      // Use a box shape for dispenser with opening at bottom
+      const geometry = new THREE.BoxGeometry(0.5, 0.5, 0.5);
       const material = new THREE.MeshStandardMaterial({ 
-        color: 0x00aaff,
+        color: 0x0055aa,
         roughness: 0.4,
         metalness: 0.6,
-        emissive: 0x005588,
+        emissive: 0x003366,
         emissiveIntensity: 0.3
       });
       const dispenserMesh = new THREE.Mesh(geometry, material);
@@ -369,11 +370,11 @@ export default function BounceScene() {
         sequencerId = Tone.Transport.scheduleRepeat((time) => {
           // Check if current step is active in the sequencer pattern
           if (dispenserMesh.userData.sequencerSteps[step]) {
-            // Create ball position slightly above the dispenser
+            // Create ball position at the BOTTOM of the dispenser with slight randomness
             const ballPosition = new THREE.Vector3(
-              position.x, 
-              position.y + 0.5, 
-              position.z
+              dispenserMesh.position.x + (Math.random() * 0.1 - 0.05), // Small X randomness
+              dispenserMesh.position.y - 0.35, // Bottom of dispenser (not top)
+              dispenserMesh.position.z + (Math.random() * 0.1 - 0.05)  // Small Z randomness
             );
             
             // Create the ball
@@ -434,8 +435,19 @@ export default function BounceScene() {
         angularDamping: 0.01 // Small angular damping too
       });
       
-      // Add initial downward velocity for predictable momentum
-      sphereBody.velocity.set(0, -0.2, 0); // Small initial velocity for golf ball
+      // Add initial velocity with slight randomness for more natural motion
+      sphereBody.velocity.set(
+        (Math.random() - 0.5) * 0.1,  // Small random X velocity
+        -0.2 - Math.random() * 0.1,   // Downward Y velocity with randomness
+        (Math.random() - 0.5) * 0.1   // Small random Z velocity
+      );
+      
+      // Add a small random rotation too
+      sphereBody.angularVelocity.set(
+        (Math.random() - 0.5) * 1,
+        (Math.random() - 0.5) * 1,
+        (Math.random() - 0.5) * 1
+      );
       
       // Add a custom userData property to identify this as a ball
       sphereBody.userData = { isBall: true };
@@ -981,11 +993,11 @@ export default function BounceScene() {
         dispenserMesh.userData.sequencerId = Tone.Transport.scheduleRepeat((time) => {
           // Check if current step is active in the sequencer pattern
           if (dispenserMesh.userData.sequencerSteps[step]) {
-            // Create ball position slightly above the dispenser
+            // Create ball position at the BOTTOM of the dispenser with slight randomness
             const ballPosition = new THREE.Vector3(
-              dispenserMesh.position.x, 
-              dispenserMesh.position.y + 0.5, 
-              dispenserMesh.position.z
+              dispenserMesh.position.x + (Math.random() * 0.1 - 0.05), // Small X randomness
+              dispenserMesh.position.y - 0.35, // Bottom of dispenser (not top)
+              dispenserMesh.position.z + (Math.random() * 0.1 - 0.05)  // Small Z randomness
             );
             
             // Create a ball - note that we can't directly use the createBall function here
