@@ -15,6 +15,8 @@ export default function BounceScene() {
   // State for note display
   const [isDrawing, setIsDrawing] = useState(false);
   const [wallLength, setWallLength] = useState(0);
+  // State for settings menu
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -79,9 +81,16 @@ export default function BounceScene() {
       scene = new THREE.Scene();
       scene.background = new THREE.Color(0x000000); // Black background
       
-      // Camera setup
-      camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-      camera.position.z = 5;
+      // Camera setup - zoomed out for larger contraptions
+      camera = new THREE.PerspectiveCamera(
+        75,                                        // FOV
+        window.innerWidth / window.innerHeight,    // Aspect ratio
+        0.1,                                       // Near clipping plane
+        100                                        // Far clipping plane
+      );
+      // Position the camera for a flat, mostly 2D-like view
+      camera.position.set(0, 2, 12);               // Lower height, still zoomed out
+      camera.lookAt(0, 0, 0);                      // Look at center of scene
       
       // Renderer setup
       renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -116,19 +125,19 @@ export default function BounceScene() {
       world.defaultContactMaterial.contactEquationRelaxation = 4; // More relaxation for stability
       
       // Create special materials for trampoline-like behavior
-      ballMaterial.friction = 0.2; // Low friction for bowling ball
-      ballMaterial.restitution = 0.5; // Medium restitution for ball itself
+      ballMaterial.friction = 0.2; // Low friction for golf ball
+      ballMaterial.restitution = 0.8; // Higher restitution for golf ball
       
-      platformMaterial.friction = 0.4; // Medium friction for platforms
-      platformMaterial.restitution = 0.8; // High restitution for trampoline effect
+      platformMaterial.friction = 0.3; // Medium friction for platforms
+      platformMaterial.restitution = 0.9; // High restitution for trampoline effect
 
       // Create contact material for ball-wall interactions
       ballPlatformContactMaterial = new CANNON.ContactMaterial(
         ballMaterial,
         platformMaterial,
         {
-          friction: 0.2, // Low friction for clean bounces
-          restitution: 0.95, // Very bouncy for trampoline effect
+          friction: 0.1, // Low friction for clean bounces
+          restitution: 0.97, // Very bouncy for golf ball effect
           contactEquationRelaxation: 3, // Softer contacts
           frictionEquationStiffness: 1e7, // Stiffer friction
           contactEquationStiffness: 1e8 // Very stiff contacts for immediate response
@@ -147,24 +156,29 @@ export default function BounceScene() {
           const ball = balls[i];
           if (ball && ball.body) {
             // Apply a constant small damping to simulate minimal air resistance
-            ball.body.velocity.scale(0.998, ball.body.velocity);
+            ball.body.velocity.scale(0.999, ball.body.velocity); // Even less damping for golf ball
           }
         }
       });
       
-      // Ground plane - invisible physics plane
+      // Ground plane - invisible physics plane - larger for bigger play area
       const groundBody = new CANNON.Body({
         type: CANNON.Body.STATIC,
         shape: new CANNON.Plane(),
         material: platformMaterial // Assign platform material
       });
       groundBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
-      groundBody.position.y = -2;
+      groundBody.position.y = -4; // Lower position to match expanded view
       groundBody.userData = { isGround: true }; // Add userData for identification
       world.addBody(groundBody);
       
-      // Visible ground plane
-      const groundGeometry = new THREE.PlaneGeometry(10, 10);
+      // Create walls around the play area to keep balls in
+      createBoundary(-10, -4, 20, 0.5, 0, Math.PI / 2); // Left wall
+      createBoundary(10, -4, 20, 0.5, 0, Math.PI / 2);  // Right wall
+      createBoundary(0, 6, 20, 0.5, Math.PI / 2, 0);    // Top wall
+      
+      // Visible ground plane - larger for bigger play area
+      const groundGeometry = new THREE.PlaneGeometry(20, 20); // Expanded from 10x10
       const groundMaterial = new THREE.MeshStandardMaterial({ 
         color: 0x228B22,
         roughness: 0.7,
@@ -172,109 +186,150 @@ export default function BounceScene() {
       });
       const ground = new THREE.Mesh(groundGeometry, groundMaterial);
       ground.rotation.x = -Math.PI / 2;
-      ground.position.y = -2;
+      ground.position.y = -4; // Lower position to match expanded view
       ground.receiveShadow = true;
       ground.userData = { isGround: true }; // Add userData for identification
       scene.add(ground);
     }
     
+    // Helper function to create boundary walls around the play area
+    function createBoundary(x, y, length, width, rotX, rotY) {
+      // Create invisible physics boundary
+      const boundaryShape = new CANNON.Box(new CANNON.Vec3(length/2, width/2, 1));
+      const boundaryBody = new CANNON.Body({
+        mass: 0, // Static body
+        position: new CANNON.Vec3(x, y, 0),
+        shape: boundaryShape,
+        material: platformMaterial
+      });
+      
+      // Rotate the boundary
+      const quat = new CANNON.Quaternion();
+      quat.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), rotX);
+      const quat2 = new CANNON.Quaternion();
+      quat2.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), rotY);
+      quat.mult(quat2, quat);
+      boundaryBody.quaternion.copy(quat);
+      
+      // Add boundary data
+      boundaryBody.userData = {
+        isBoundary: true,
+        restitution: 0.97 // High restitution for bouncy boundaries
+      };
+      
+      world.addBody(boundaryBody);
+      return boundaryBody;
+    }
+    
     // Create a ball at the specified position
     function createBall(position) {
-      const radius = 0.2;
+      // Ball config - smaller golf ball
+      const radius = 0.1; // Smaller radius for golf ball
+      const mass = 0.05; // Much lighter for golf ball
       
-      // Physical body with bowling ball properties
-      const ballBody = new CANNON.Body({
-        mass: 5, // Heavier mass like a bowling ball
-        shape: new CANNON.Sphere(radius),
+      // Physics body
+      const sphereShape = new CANNON.Sphere(radius);
+      const sphereBody = new CANNON.Body({
+        mass: mass,
+        shape: sphereShape,
         position: new CANNON.Vec3(position.x, position.y, position.z),
-        linearDamping: 0.05, // Low air resistance for a heavy ball
-        angularDamping: 0.2, // Some rotational damping
-        material: ballMaterial // Assign ball material
+        material: ballMaterial,
+        linearDamping: 0.01, // Small damping for realistic physics
+        angularDamping: 0.01 // Small angular damping too
       });
       
-      // Initial downward velocity to simulate dropping
-      ballBody.velocity.set(
-        0,     // No initial x velocity
-        -0.5,  // Small downward velocity
-        0      // No initial z velocity
-      );
+      // Add initial downward velocity for predictable momentum
+      sphereBody.velocity.set(0, -0.2, 0); // Small initial velocity for golf ball
       
-      world.addBody(ballBody);
+      // Add a custom userData property to identify this as a ball
+      sphereBody.userData = { isBall: true };
       
-      // Listen for collision events to play sounds and handle physics
-      ballBody.addEventListener('collide', (event) => {
-        const relativeVelocity = event.contact.getImpactVelocityAlongNormal();
+      // Add collision handling
+      sphereBody.addEventListener('collide', function(e) {
+        // Get the body that was hit
+        const targetBody = e.body;
         
-        // Get the other colliding body
-        const otherBody = event.body === ballBody ? event.target : event.body;
-        
-        // Handle collision based on what was hit
-        if (otherBody.userData && otherBody.userData.isWall) {
-          // For wall (trampoline) collisions, use custom restitution
-          // This ensures momentum is conserved (with small loss) without adding energy
-          // Use the wall's restitution value
-          const wallRestitution = otherBody.userData.restitution || 0.95;
+        // Handle different collision types
+        if (targetBody.userData && targetBody.userData.isWall) {
+          // Wall collision (trampoline effect)
+          const contactNormal = e.contact.ni; // Normal vector of collision
+          const impactVelocity = sphereBody.velocity.dot(contactNormal); // Velocity along normal
           
-          // Get the contact normal
-          const contactNormal = event.contact.ni;
+          // Custom bounce effect for trampoline walls
+          const restitution = 0.97; // High restitution for golf ball bounce
+          const bounce = -impactVelocity * (1 + restitution); // Using restitution
           
-          // Apply a properly scaled impulse along the normal
-          // This simulates an elastic collision with the trampoline
-          const impulseMagnitude = Math.abs(relativeVelocity) * ballBody.mass * wallRestitution;
+          // Create impulse vector along the contact normal
           const impulse = new CANNON.Vec3(
-            contactNormal.x * impulseMagnitude,
-            contactNormal.y * impulseMagnitude,
-            contactNormal.z * impulseMagnitude
+            contactNormal.x * bounce * mass,
+            contactNormal.y * bounce * mass,
+            contactNormal.z * bounce * mass
           );
           
-          // Apply small energy loss on the walls (trampolines absorb a tiny bit of energy)
-          impulse.scale(0.98, impulse);
+          // Apply impulse to bounce the ball
+          sphereBody.applyImpulse(impulse, sphereBody.position);
           
-          // Play the note associated with the wall
-          if (audioContext && soundEnabled && Math.abs(relativeVelocity) > 0.5) {
-            // Velocity affects volume
-            const intensity = Math.min(Math.abs(relativeVelocity) / 10, 1);
-            playNoteForLength(audioContext, otherBody.userData.length, 0.5, intensity * 0.5);
+          // Play a bounce sound with volume based on velocity
+          const volume = Math.min(0.5, Math.abs(impactVelocity) / 10);
+          if (audioContext && soundEnabled) {
+            window.playBounceSound(volume);
           }
-        } 
-        // For ground collisions
-        else if (otherBody.userData && otherBody.userData.isGround) {
-          ballBody.userData = ballBody.userData || {};
-          ballBody.userData.shouldRemove = true;
+          
+        } else if (targetBody.userData && targetBody.userData.isGround) {
+          // Ground collision - bouncy for golf ball
           
           // Play bounce sound
-          if (audioContext && soundEnabled && Math.abs(relativeVelocity) > 0.5) {
-            const intensity = Math.min(Math.abs(relativeVelocity) / 10, 1);
-            window.playBounceSound(intensity);
-          }
-        }
-        // Other collisions (if any)
-        else if (Math.abs(relativeVelocity) > 0.5) {
-          // Apply a default energy loss
-          const energyLoss = 0.96; // Lose 4% energy per collision
-          ballBody.velocity.scale(energyLoss, ballBody.velocity);
-          
-          // Play a bounce sound for any other collision
           if (audioContext && soundEnabled) {
-            const intensity = Math.min(Math.abs(relativeVelocity) / 10, 1);
-            window.playBounceSound(intensity);
+            const speed = sphereBody.velocity.length();
+            const volume = Math.min(0.3, speed / 10);
+            window.playBounceSound(volume);
+          }
+          
+        } else if (targetBody.userData && targetBody.userData.isBoundary) {
+          // Boundary collision - bounce realistically
+          if (audioContext && soundEnabled) {
+            const speed = sphereBody.velocity.length();
+            const volume = Math.min(0.4, speed / 8);
+            window.playBounceSound(volume);
+          }
+        } else {
+          // Other collisions
+          // Energy loss on general collisions
+          sphereBody.velocity.scale(0.99, sphereBody.velocity);
+          
+          // Play bounce sound
+          if (audioContext && soundEnabled) {
+            const speed = sphereBody.velocity.length();
+            const volume = Math.min(0.2, speed / 15);
+            window.playBounceSound(volume);
           }
         }
       });
       
-      // Visual ball - heavier appearance
-      const ballGeometry = new THREE.SphereGeometry(radius, 32, 32);
-      const visualBallMaterial = new THREE.MeshStandardMaterial({ 
-        color: Math.random() * 0xffffff,
-        roughness: 0.3,
-        metalness: 0.5 // More metallic appearance for a bowling ball look
-      });
-      const ballMesh = new THREE.Mesh(ballGeometry, visualBallMaterial);
-      ballMesh.castShadow = true;
-      ballMesh.receiveShadow = true;
-      scene.add(ballMesh);
+      // Add the body to the world
+      world.addBody(sphereBody);
       
-      return { body: ballBody, mesh: ballMesh };
+      // Create Three.js mesh
+      const sphereGeometry = new THREE.SphereGeometry(radius, 32, 32);
+      const sphereMaterial = new THREE.MeshStandardMaterial({
+        color: 0xFFFFFF, // White for golf ball
+        roughness: 0.2,  // Smooth surface
+        metalness: 0.1   // Slight sheen
+      });
+      const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+      sphere.castShadow = true;
+      sphere.receiveShadow = true;
+      scene.add(sphere);
+      
+      // Add to our list of balls
+      balls.push({
+        body: sphereBody,
+        mesh: sphere,
+        createdAt: Date.now(),
+        markForRemoval: false
+      });
+      
+      return { body: sphereBody, mesh: sphere };
     }
     
     // Create a wall between two points
@@ -494,6 +549,59 @@ export default function BounceScene() {
       }
     }
     
+    // Handle ball material change
+    function handleMaterialChange(event) {
+      const materialType = event.target.value;
+      
+      // Update ball material properties based on selection
+      switch (materialType) {
+        case 'golf':
+          ballMaterial.friction = 0.2;
+          ballMaterial.restitution = 0.8;
+          break;
+        case 'rubber':
+          ballMaterial.friction = 0.7;
+          ballMaterial.restitution = 0.9;
+          break;
+        case 'steel':
+          ballMaterial.friction = 0.1;
+          ballMaterial.restitution = 0.6;
+          break;
+        case 'wood':
+          ballMaterial.friction = 0.5;
+          ballMaterial.restitution = 0.4;
+          break;
+        default:
+          ballMaterial.friction = 0.2;
+          ballMaterial.restitution = 0.8;
+      }
+      
+      // Update contact material
+      if (contactMaterialRef.current) {
+        contactMaterialRef.current.restitution = ballMaterial.restitution;
+      }
+      
+      // Play a subtle feedback tone when material changes
+      if (window.playBounceSound) {
+        window.playBounceSound(ballMaterial.restitution * 0.4);
+      }
+    }
+    
+    // Toggle settings menu
+    window.toggleSettings = () => {
+      const settingsMenu = document.getElementById('settings-menu');
+      if (settingsMenu) {
+        const isVisible = settingsMenu.style.display === 'block';
+        settingsMenu.style.display = isVisible ? 'none' : 'block';
+        
+        // Update accessibility attribute
+        const settingsButton = document.getElementById('settings-button');
+        if (settingsButton) {
+          settingsButton.setAttribute('aria-expanded', !isVisible);
+        }
+      }
+    };
+    
     // Animation loop
     const timeStep = 1 / 60; // 60 frames per second
     let lastCallTime; // For tracking accumulated time between frames
@@ -564,6 +672,18 @@ export default function BounceScene() {
       soundToggle.addEventListener('click', toggleSound);
     }
     
+    // Setup material picker
+    const materialSelect = document.getElementById('ball-material');
+    if (materialSelect) {
+      materialSelect.addEventListener('change', handleMaterialChange);
+    }
+    
+    // Setup settings toggle
+    const settingsButton = document.getElementById('settings-button');
+    if (settingsButton) {
+      settingsButton.addEventListener('click', window.toggleSettings);
+    }
+    
     // Start animation loop
     animate();
     
@@ -580,6 +700,18 @@ export default function BounceScene() {
       const soundToggle = document.getElementById('sound-toggle');
       if (soundToggle) {
         soundToggle.removeEventListener('click', toggleSound);
+      }
+      
+      // Remove material picker listener
+      const materialSelect = document.getElementById('ball-material');
+      if (materialSelect) {
+        materialSelect.removeEventListener('change', handleMaterialChange);
+      }
+      
+      // Remove settings toggle listener
+      const settingsButton = document.getElementById('settings-button');
+      if (settingsButton) {
+        settingsButton.removeEventListener('click', window.toggleSettings);
       }
       
       // Stop animation frame
@@ -622,6 +754,11 @@ export default function BounceScene() {
       window.playBounceSound(newRestitution * 0.3);
     }
   };
+  
+  // Toggle settings menu
+  const toggleSettings = () => {
+    setIsSettingsOpen(!isSettingsOpen);
+  };
 
   return (
     <div className="scene-container" ref={mountRef} style={{ width: '100%', height: '100vh' }}>
@@ -630,6 +767,29 @@ export default function BounceScene() {
         <p>Click to drop balls</p>
         <p>Shift + Click + Drag to create walls</p>
         <p>Wall length determines pitch (2 octaves of C major)</p>
+      </div>
+      <button id="sound-toggle" aria-label="Toggle sound">🔊</button>
+      
+      {/* Settings button (hamburger with circle) */}
+      <button 
+        id="settings-button" 
+        className="settings-toggle" 
+        aria-label="Toggle settings menu" 
+        aria-expanded={isSettingsOpen}
+        onClick={toggleSettings}
+      >
+        <div className="hamburger-icon">
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+      </button>
+      
+      {/* Settings menu */}
+      <div id="settings-menu" className={`settings-panel ${isSettingsOpen ? 'open' : ''}`}>
+        <h3>Settings</h3>
+        
+        {/* Bounciness slider moved from instructions */}
         <div className="slider-container">
           <label htmlFor="bounciness-slider">Platform Bounciness:</label>
           <input 
@@ -645,8 +805,24 @@ export default function BounceScene() {
           />
           <span id="bounciness-value">0.50</span>
         </div>
+        
+        {/* Ball material picker */}
+        <div className="material-picker">
+          <label htmlFor="ball-material">Ball Material:</label>
+          <select 
+            id="ball-material" 
+            name="material" 
+            defaultValue="golf"
+            aria-label="Select Ball Material"
+          >
+            <option value="golf">Golf Ball</option>
+            <option value="rubber">Rubber Ball</option>
+            <option value="steel">Steel Ball</option>
+            <option value="wood">Wooden Ball</option>
+          </select>
+        </div>
       </div>
-      <button id="sound-toggle" aria-label="Toggle sound">🔊</button>
+      
       <NoteDisplay isDrawing={isDrawing} wallLength={wallLength} />
     </div>
   );
@@ -671,7 +847,7 @@ const styles = `
   text-align: right;
 }
 
-/* You might need styles for #instructions, #sound-toggle etc. */
+/* Instructions panel */
 #instructions {
   position: absolute;
   top: 10px;
@@ -683,15 +859,94 @@ const styles = `
   z-index: 10;
 }
 
+/* Sound toggle button */
 #sound-toggle {
   position: absolute;
   top: 10px;
-  right: 10px;
+  right: 70px; /* Moved to make room for settings button */
   font-size: 1.5em;
   background: none;
   border: none;
   cursor: pointer;
   z-index: 10;
+}
+
+/* Settings toggle button */
+.settings-toggle {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 40px;
+  height: 40px;
+  background: rgba(0, 0, 0, 0.7);
+  border: 2px solid white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 20;
+}
+
+/* Hamburger icon */
+.hamburger-icon {
+  width: 20px;
+  height: 16px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.hamburger-icon span {
+  display: block;
+  height: 2px;
+  width: 100%;
+  background: white;
+  border-radius: 1px;
+}
+
+/* Settings panel */
+.settings-panel {
+  position: absolute;
+  top: 60px;
+  right: 10px;
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: 15px;
+  border-radius: 5px;
+  z-index: 15;
+  min-width: 250px;
+  display: none;
+}
+
+.settings-panel.open {
+  display: block;
+}
+
+.settings-panel h3 {
+  margin-top: 0;
+  margin-bottom: 15px;
+  font-size: 1.2em;
+}
+
+/* Material picker */
+.material-picker {
+  margin-top: 15px;
+}
+
+.material-picker label {
+  display: block;
+  margin-bottom: 5px;
+}
+
+.material-picker select {
+  width: 100%;
+  padding: 5px;
+  background: #333;
+  color: white;
+  border: 1px solid #555;
+  border-radius: 3px;
 }
 `;
 
