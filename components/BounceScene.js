@@ -1,13 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
-import { mapLengthToNote, getNoteColor, playNoteForLength } from '../utils/midiSequencer';
 import * as Tone from 'tone';
-import { 
-  playBounceSound, 
-  playModeChangeSound,
-  playNote
-} from '../utils/synthManager';
+import { mapLengthToNote, getNoteColor, playNoteForLength } from '../utils/midiSequencer';
+import { playBounceSound, playNote } from '../utils/synthManager';
 import NoteDisplay from './NoteDisplay';
 
 export default function BounceScene() {
@@ -58,16 +54,14 @@ export default function BounceScene() {
     
     // Audio context for sound effects
     function initAudio() {
-      // No need to create audioContext - synthManager handles this
-      audioContext = true; // Just a flag to indicate audio is initialized
-      
-      // Use our global playBounceSound function
-      window.playBounceSound = playBounceSound;
-      
+      // Use Tone.context instead of creating a new AudioContext
       // Ensure Tone.js is started
       if (Tone.context.state !== 'running') {
         Tone.start();
       }
+      
+      // Use the playBounceSound from synthManager
+      window.playBounceSound = playBounceSound;
     }
     
     // Initialize Three.js scene

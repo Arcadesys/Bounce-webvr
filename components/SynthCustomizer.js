@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import * as Tone from 'tone';
-import { INSTRUMENT_PREFABS } from '../utils/synthManager';
+import { INSTRUMENT_PREFABS, setInstrumentType, getCurrentInstrumentType } from '../utils/synthManager';
 
 /**
  * SynthCustomizer Component
@@ -9,10 +9,7 @@ import { INSTRUMENT_PREFABS } from '../utils/synthManager';
  */
 export default function SynthCustomizer({ onClose }) {
   // Get saved instrument or default to marimba
-  const savedInstrument = typeof localStorage !== 'undefined' ? 
-    localStorage.getItem('currentInstrument') : null;
-  const initialInstrument = (savedInstrument && INSTRUMENT_PREFABS[savedInstrument]) ? 
-    savedInstrument : 'marimba';
+  const initialInstrument = getCurrentInstrumentType();
   
   const [currentInstrument, setCurrentInstrument] = useState(initialInstrument);
   const [synthParams, setSynthParams] = useState(INSTRUMENT_PREFABS[initialInstrument]);
@@ -54,6 +51,9 @@ export default function SynthCustomizer({ onClose }) {
   const selectInstrument = (instrument) => {
     setCurrentInstrument(instrument);
     setSynthParams(INSTRUMENT_PREFABS[instrument]);
+    
+    // Update the synth manager
+    setInstrumentType(instrument);
     
     // Play a test note to preview the instrument
     setTimeout(playTestNote, 100);
@@ -143,7 +143,9 @@ export default function SynthCustomizer({ onClose }) {
   const applySettings = () => {
     // Save synth settings to localStorage
     localStorage.setItem('customSynthSettings', JSON.stringify(synthParams));
-    localStorage.setItem('currentInstrument', currentInstrument);
+    
+    // Update the instrument type in synthManager
+    setInstrumentType(currentInstrument);
     
     // Play a success sound
     playSuccessSound();

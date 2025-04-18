@@ -1,4 +1,5 @@
 import * as Tone from 'tone';
+import { mapLengthToNote } from './midiSequencer';
 
 // Instrument prefabs
 const INSTRUMENT_PREFABS = {
@@ -41,6 +42,9 @@ const DEFAULT_SYNTH_SETTINGS = INSTRUMENT_PREFABS.marimba;
 let synthInstance = null;
 // Dedicated synth for bounce sounds
 let bounceSynthInstance = null;
+
+// Current instrument type (can be changed without changing all settings)
+let currentInstrumentType = localStorage.getItem('currentInstrument') || 'marimba';
 
 /**
  * Initialize the synth with settings
@@ -152,19 +156,8 @@ export function playNote(note, duration = '8n', time = undefined, velocity = 0.7
  * @returns {Object} Information about the played note
  */
 export function playNoteForLength(unusedAudioContext, length, duration = 0.5, volume = 0.5, unusedWaveform = 'sine') {
-  // Calculate note from length as in the original code
-  // This is a simplified version of the mapping function
-  const notes = [
-    'C4', 'D4', 'E4', 'F4', 'G4', 'A4', 'B4',
-    'C5', 'D5', 'E5', 'F5', 'G5', 'A5', 'B5', 'C6'
-  ];
-  
-  // Normalize length to 0-1 range (assuming length is between 0.2 and 3.0)
-  const normalizedLength = Math.min(Math.max((length - 0.2) / (3.0 - 0.2), 0), 1);
-  
-  // Map to a note
-  const noteIndex = Math.floor(normalizedLength * notes.length);
-  const note = notes[Math.min(noteIndex, notes.length - 1)];
+  // Get the note from midiSequencer's mapping function
+  const note = mapLengthToNote(length);
   
   // Play the note using our synth with a fixed short duration for percussion
   const PERCUSSIVE_DURATION = '16n'; // Fixed short duration for all hits
@@ -255,6 +248,57 @@ export function playModeChangeSound(drawMode) {
     synth.oscillator.type = originalType;
     synth.volume.value = originalVolume;
   }, 300);
+}
+
+/**
+ * Set the current instrument type
+ * @param {string} instrumentType - The instrument type ('marimba', 'epiano', etc.)
+ */
+export function setInstrumentType(instrumentType) {
+  if (INSTRUMENT_PREFABS[instrumentType]) {
+    currentInstrumentType = instrumentType;
+    
+    // Save to localStorage
+    localStorage.setItem('currentInstrument', instrumentType);
+    
+    // If synth exists, update its settings
+    if (synthInstance) {
+      const currentSettings = {
+        oscillator: {
+          type: INSTRUMENT_PREFABS[instrumentType].oscillator.type
+        },
+        envelope: {
+          attack: INSTRUMENT_PREFABS[instrumentType].envelope.attack,
+          decay: INSTRUMENT_PREFABS[instrumentType].envelope.decay,
+          sustain: INSTRUMENT_PREFABS[instrumentType].envelope.sustain,
+          release: INSTRUMENT_PREFABS[instrumentType].envelope.release
+        },
+        volume: INSTRUMENT_PREFABS[instrumentType].volume
+      };
+      
+      // Update the synth settings
+      synthInstance.oscillator.type = currentSettings.oscillator.type;
+      synthInstance.envelope.attack = currentSettings.envelope.attack;
+      synthInstance.envelope.decay = currentSettings.envelope.decay;
+      synthInstance.envelope.sustain = currentSettings.envelope.sustain;
+      synthInstance.envelope.release = currentSettings.envelope.release;
+      synthInstance.volume.value = currentSettings.volume;
+      
+      // Save current settings
+      localStorage.setItem('customSynthSettings', JSON.stringify(currentSettings));
+    }
+    
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Get the current instrument type
+ * @returns {string} The current instrument type
+ */
+export function getCurrentInstrumentType() {
+  return currentInstrumentType;
 }
 
 // Export default settings and instrument prefabs for reference

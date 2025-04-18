@@ -1,36 +1,22 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
+import * as Tone from 'tone';
 import { mapLengthToNote, getNoteColor, playNoteForLength } from '../utils/midiSequencer';
+import { playBounceSound } from '../utils/synthManager';
 
-// Audio context for sound effects
-let audioContext;
+// Sound toggle
 let soundEnabled = true;
 const soundToggle = document.getElementById('sound-toggle');
 
 // Initialize audio on user interaction
 function initAudio() {
-  audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  // Ensure Tone.js is started
+  if (Tone.context.state !== 'running') {
+    Tone.start();
+  }
   
-  // Create success sound function
-  window.playBounceSound = (intensity = 1.0) => {
-    if (!soundEnabled || !audioContext) return;
-    
-    const oscillator = audioContext.createOscillator();
-    const gainNode = audioContext.createGain();
-    
-    oscillator.type = 'sine';
-    oscillator.frequency.setValueAtTime(300 + intensity * 200, audioContext.currentTime);
-    oscillator.frequency.exponentialRampToValueAtTime(200, audioContext.currentTime + 0.1);
-    
-    gainNode.gain.setValueAtTime(intensity * 0.3, audioContext.currentTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.2);
-    
-    oscillator.connect(gainNode);
-    gainNode.connect(audioContext.destination);
-    
-    oscillator.start();
-    oscillator.stop(audioContext.currentTime + 0.2);
-  };
+  // Use the global playBounceSound function from synthManager
+  window.playBounceSound = playBounceSound;
 }
 
 // Toggle sound
@@ -40,7 +26,7 @@ soundToggle?.addEventListener('click', () => {
   soundToggle.setAttribute('aria-label', soundEnabled ? 'Sound On' : 'Sound Off');
   
   // Initialize audio if not already done
-  if (soundEnabled && !audioContext) {
+  if (soundEnabled) {
     initAudio();
   }
 });
@@ -145,17 +131,18 @@ function updateModeIndicator(indicator) {
   }
   
   // Play a gentle tone to notify of mode change
-  if (audioContext && soundEnabled) {
-    const oscillator = audioContext.createOscillator();
-    const gainNode = audioContext.createGain();
-    oscillator.connect(gainNode);
-    gainNode.connect(audioContext.destination);
-    oscillator.type = drawMode ? 'sine' : 'triangle';
-    oscillator.frequency.value = drawMode ? 440 : 330; // A4 or E4
-    gainNode.gain.value = 0.1;
-    oscillator.start();
-    gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.3);
-    oscillator.stop(audioContext.currentTime + 0.3);
+  if (soundEnabled) {
+    // Use Tone.js synth for mode change sound
+    const modeSynth = new Tone.Synth({
+      oscillator: { type: drawMode ? 'sine' : 'triangle' },
+      envelope: { attack: 0.01, decay: 0.2, sustain: 0.1, release: 0.2 }
+    }).toDestination();
+    
+    modeSynth.volume.value = -20; // Quiet notification
+    modeSynth.triggerAttackRelease(drawMode ? 440 : 330, 0.3);
+    
+    // Dispose after playing
+    setTimeout(() => modeSynth.dispose(), 500);
   }
 }
 
@@ -189,16 +176,16 @@ export function createBall(position) {
     // Check if colliding with a wall that has note information
     if (otherBody.userData && otherBody.userData.note && Math.abs(relativeVelocity) > 0.5) {
       // Play the note associated with the wall
-      if (audioContext && soundEnabled) {
+      if (soundEnabled) {
         // Velocity affects volume
         const intensity = Math.min(Math.abs(relativeVelocity) / 10, 1);
-        playNoteForLength(audioContext, otherBody.userData.length, 0.5, intensity * 0.5);
+        playNoteForLength(Tone.context, otherBody.userData.length, 0.5, intensity * 0.5);
       }
     } 
     // Default bounce sound for other collisions
     else if (Math.abs(relativeVelocity) > 0.5) {
       const intensity = Math.min(Math.abs(relativeVelocity) / 10, 1);
-      window.playBounceSound(intensity);
+      playBounceSound(intensity);
     }
     
     // If collided with ground, mark for removal
@@ -284,8 +271,8 @@ export function createWall(start, end) {
   wallBodies.push(wallBody);
   
   // Play the note when the wall is created
-  if (audioContext && soundEnabled) {
-    playNoteForLength(audioContext, length, 0.5, 0.3);
+  if (soundEnabled) {
+    playNoteForLength(Tone.context, length, 0.5, 0.3);
   }
   
   return { body: wallBody, mesh: wallMesh, note: note };
@@ -338,14 +325,14 @@ const balls = [];
 
 // Mouse event handlers
 function onMouseDown(event) {
+  // Initialize audio on first interaction
+  if (soundEnabled && Tone.context.state !== 'running') {
+    initAudio();
+  }
+  
   // Get mouse position
   mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
   mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-  
-  // Initialize audio on first interaction
-  if (!audioContext) {
-    initAudio();
-  }
   
   raycaster.setFromCamera(mouse, camera);
   
@@ -432,7 +419,7 @@ window.addEventListener('resize', () => {
 // Allow drawing or dropping a ball with touch on mobile
 window.addEventListener('touchstart', (event) => {
   // Initialize audio on first interaction
-  if (!audioContext) {
+  if (soundEnabled && Tone.context.state !== 'running') {
     initAudio();
   }
   

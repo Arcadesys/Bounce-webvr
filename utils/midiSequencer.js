@@ -3,6 +3,8 @@
  * Handles converting bar lengths to MIDI notes and playing them
  */
 import * as Tone from 'tone';
+// Import the playNoteForLength function from synthManager
+import { playNoteForLength as playSynthNote } from './synthManager';
 
 // C major scale notes for two octaves (C4 to C6)
 const MAJOR_SCALE_FREQUENCIES = {
@@ -77,65 +79,73 @@ export function mapLengthToFrequency(length, minLength = 0.2, maxLength = 3.0) {
  * @returns {Object} The oscillator and gain nodes
  */
 export function playNoteForLength(audioContext, length, duration = 0.5, volume = 0.5, waveform = 'sine') {
-  if (!audioContext) return null;
+  // First, try using the synthManager version which uses instrument presets
+  try {
+    return playSynthNote(audioContext, length, duration, volume, waveform);
+  } catch (e) {
+    console.warn("Error using synthManager playNoteForLength, falling back to local implementation", e);
+    
+    // Fallback to the original implementation if there's an error
+    if (!audioContext) return null;
   
-  const frequency = mapLengthToFrequency(length);
-  const note = mapLengthToNote(length);
-  
-  // Use Tone.js to play the sound
-  if (typeof Tone !== 'undefined') {
-    // Create a temporary synth
-    const synth = new Tone.Synth({
-      oscillator: {
-        type: waveform
-      },
-      envelope: {
-        attack: 0.001,
-        decay: 0.1,
-        sustain: 0.1,
-        release: 0.1
-      },
-      volume: (volume * 20) - 20 // Convert 0-1 range to -20 to 0 dB
-    }).toDestination();
+    const frequency = mapLengthToFrequency(length);
+    const note = mapLengthToNote(length);
     
-    // Play the note
-    synth.triggerAttackRelease(frequency, duration);
+    // Use Tone.js to play the sound
+    if (typeof Tone !== 'undefined') {
+      // Create a temporary synth
+      const synth = new Tone.Synth({
+        oscillator: {
+          type: waveform
+        },
+        envelope: {
+          attack: 0.001,
+          decay: 0.1,
+          sustain: 0.1,
+          release: 0.1
+        },
+        volume: (volume * 20) - 20 // Convert 0-1 range to -20 to 0 dB
+      }).toDestination();
+      
+      // Play the note
+      synth.triggerAttackRelease(frequency, duration);
+      
+      // Dispose of the synth after it's done playing
+      setTimeout(() => {
+        synth.dispose();
+      }, duration * 1000 + 100);
+      
+      return { frequency, note };
+    }
     
-    // Dispose of the synth after it's done playing
-    setTimeout(() => {
-      synth.dispose();
-    }, duration * 1000 + 100);
+    // Fallback to Web Audio API if Tone.js is not available
+    else if (audioContext.createOscillator) {
+      // Create oscillator and gain nodes
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      // Configure oscillator
+      oscillator.type = waveform;
+      oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
+      
+      // Configure gain (volume with fade out)
+      gainNode.gain.setValueAtTime(volume, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + duration);
+      
+      // Connect nodes
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      // Start and stop the oscillator
+      oscillator.start();
+      oscillator.stop(audioContext.currentTime + duration);
+      
+      return { oscillator, gainNode, frequency, note };
+    }
     
+    // Return basic info if neither method is available
     return { frequency, note };
   }
-  
-  // Fallback to Web Audio API if Tone.js is not available
-  else if (audioContext.createOscillator) {
-    // Create oscillator and gain nodes
-    const oscillator = audioContext.createOscillator();
-    const gainNode = audioContext.createGain();
-    
-    // Configure oscillator
-    oscillator.type = waveform;
-    oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
-    
-    // Configure gain (volume with fade out)
-    gainNode.gain.setValueAtTime(volume, audioContext.currentTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + duration);
-    
-    // Connect nodes
-    oscillator.connect(gainNode);
-    gainNode.connect(audioContext.destination);
-    
-    // Start and stop the oscillator
-    oscillator.start();
-    oscillator.stop(audioContext.currentTime + duration);
-    
-    return { oscillator, gainNode, frequency, note };
-  }
-  
-  // Return basic info if neither method is available
-  return { frequency, note };
 }
 
 /**
