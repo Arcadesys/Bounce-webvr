@@ -11,6 +11,12 @@ A 3D bouncing ball physics generator with optional VR support, inspired by old-s
 - Accessible design with audio cues
 - Mobile support (touch to drop balls)
 
+## Tech Stack
+
+- Next.js for the application framework
+- Three.js for 3D rendering
+- Cannon.js for physics simulation
+
 ## Controls
 
 - **Click** to drop a ball
@@ -28,6 +34,9 @@ npm run dev
 
 # Build for production
 npm run build
+
+# Start production server
+npm start
 ```
 
 ## Future Plans
