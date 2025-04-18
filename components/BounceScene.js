@@ -2,17 +2,12 @@ import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 
-// Define physics materials
-const ballMaterial = new CANNON.Material("ballMaterial");
-ballMaterial.friction = 0.3;
-ballMaterial.restitution = 0.7; // Default ball restitution
-
-const platformMaterial = new CANNON.Material("platformMaterial");
-platformMaterial.friction = 0.1; // Low friction for platforms
-platformMaterial.restitution = 0.5; // Default platform restitution (will be controlled by slider)
-
 export default function BounceScene() {
   const mountRef = useRef(null);
+  // Reference to contact material for accessing in slider handler
+  const contactMaterialRef = useRef(null);
+  // Store platform material for access from slider handler
+  const platformMaterialRef = useRef(null);
   
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -29,6 +24,19 @@ export default function BounceScene() {
     let currentWallMesh = null;
     let audioContext;
     let soundEnabled = true;
+    
+    // Define physics materials inside the useEffect
+    const ballMaterial = new CANNON.Material("ballMaterial");
+    ballMaterial.friction = 0.3;
+    ballMaterial.restitution = 0.7; // Default ball restitution
+    
+    const platformMaterial = new CANNON.Material("platformMaterial");
+    platformMaterial.friction = 0.1; // Low friction for platforms
+    platformMaterial.restitution = 0.5; // Default platform restitution (will be controlled by slider)
+    
+    // Store in ref for access outside useEffect
+    platformMaterialRef.current = platformMaterial;
+    
     // Keep track of the shared platform material contact properties
     let ballPlatformContactMaterial;
     
@@ -101,6 +109,8 @@ export default function BounceScene() {
           restitution: platformMaterial.restitution, // Use the platform's restitution
         }
       );
+      // Store in ref for access outside useEffect
+      contactMaterialRef.current = ballPlatformContactMaterial;
       world.addContactMaterial(ballPlatformContactMaterial);
       
       // Ground plane - invisible physics plane
@@ -111,6 +121,7 @@ export default function BounceScene() {
       });
       groundBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
       groundBody.position.y = -2;
+      groundBody.userData = { isGround: true }; // Add userData for identification
       world.addBody(groundBody);
       
       // Visible ground plane
@@ -124,6 +135,7 @@ export default function BounceScene() {
       ground.rotation.x = -Math.PI / 2;
       ground.position.y = -2;
       ground.receiveShadow = true;
+      ground.userData = { isGround: true }; // Add userData for identification
       scene.add(ground);
     }
     
@@ -145,20 +157,29 @@ export default function BounceScene() {
       // Listen for collision events to play sounds
       ballBody.addEventListener('collide', (event) => {
         const relativeVelocity = event.contact.getImpactVelocityAlongNormal();
+        
+        // Play bounce sound
         if (window.playBounceSound && Math.abs(relativeVelocity) > 0.5) {
           const intensity = Math.min(Math.abs(relativeVelocity) / 10, 1);
           window.playBounceSound(intensity);
+        }
+        
+        // If collided with ground, mark for removal
+        const otherBody = event.body === ballBody ? event.target : event.body;
+        if (otherBody.userData && otherBody.userData.isGround) {
+          ballBody.userData = ballBody.userData || {};
+          ballBody.userData.shouldRemove = true;
         }
       });
       
       // Visual ball
       const ballGeometry = new THREE.SphereGeometry(radius, 32, 32);
-      const ballMaterial = new THREE.MeshStandardMaterial({ 
+      const visualBallMaterial = new THREE.MeshStandardMaterial({ 
         color: Math.random() * 0xffffff,
         roughness: 0.4,
         metalness: 0.3
       });
-      const ballMesh = new THREE.Mesh(ballGeometry, ballMaterial);
+      const ballMesh = new THREE.Mesh(ballGeometry, visualBallMaterial);
       ballMesh.castShadow = true;
       ballMesh.receiveShadow = true;
       scene.add(ballMesh);
@@ -355,8 +376,9 @@ export default function BounceScene() {
         balls[i].mesh.position.copy(balls[i].body.position);
         balls[i].mesh.quaternion.copy(balls[i].body.quaternion);
         
-        // Remove balls that fall too far
-        if (balls[i].body.position.y < -10) {
+        // Remove balls that hit the ground or fall too far
+        if ((balls[i].body.userData && balls[i].body.userData.shouldRemove) || 
+            balls[i].body.position.y < -10) {
           scene.remove(balls[i].mesh);
           world.removeBody(balls[i].body);
           balls.splice(i, 1);
@@ -420,16 +442,27 @@ export default function BounceScene() {
   // Function to update platform bounciness
   const handleBouncinessChange = (event) => {
     const newRestitution = parseFloat(event.target.value);
-    if (ballPlatformContactMaterial) {
-      ballPlatformContactMaterial.restitution = newRestitution;
+    
+    // Update both the contact material and platform material restitution
+    if (contactMaterialRef.current) {
+      contactMaterialRef.current.restitution = newRestitution;
     }
+    
+    // Update the platform material's restitution for new contacts
+    if (platformMaterialRef.current) {
+      platformMaterialRef.current.restitution = newRestitution;
+    }
+    
     // Update display value
     const display = document.getElementById('bounciness-value');
     if (display) {
       display.textContent = newRestitution.toFixed(2);
     }
-    // Optional: Play a subtle tone here
-    // e.g., playTickSound(newRestitution);
+    
+    // Play a subtle feedback tone when value changes
+    if (window.playBounceSound) {
+      window.playBounceSound(newRestitution * 0.3);
+    }
   };
 
   return (
@@ -445,13 +478,13 @@ export default function BounceScene() {
             id="bounciness-slider" 
             name="bounciness" 
             min="0.1" 
-            max="2.0" 
-            step="0.1" 
-            defaultValue={platformMaterial.restitution} // Use initial default
+            max="10.0" 
+            step="0.2" 
+            defaultValue="0.5" 
             onChange={handleBouncinessChange} 
             aria-label="Adjust Platform Bounciness"
           />
-          <span id="bounciness-value">{platformMaterial.restitution.toFixed(2)}</span>
+          <span id="bounciness-value">0.50</span>
         </div>
       </div>
       <button id="sound-toggle" aria-label="Toggle sound">🔊</button>

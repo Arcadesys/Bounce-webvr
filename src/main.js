@@ -81,6 +81,7 @@ const groundBody = new CANNON.Body({
 });
 groundBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
 groundBody.position.y = -2;
+groundBody.userData = { isGround: true };
 world.addBody(groundBody);
 
 // Visible ground plane
@@ -94,6 +95,7 @@ const ground = new THREE.Mesh(groundGeometry, groundMaterial);
 ground.rotation.x = -Math.PI / 2;
 ground.position.y = -2;
 ground.receiveShadow = true;
+ground.userData = { isGround: true };
 scene.add(ground);
 
 // Container for walls
@@ -127,12 +129,21 @@ export function createBall(position) {
   
   world.addBody(ballBody);
   
-  // Listen for collision events to play sounds
+  // Listen for collision events to play sounds and detect ground contact
   ballBody.addEventListener('collide', (event) => {
     const relativeVelocity = event.contact.getImpactVelocityAlongNormal();
+    
+    // Play bounce sound
     if (window.playBounceSound && Math.abs(relativeVelocity) > 0.5) {
       const intensity = Math.min(Math.abs(relativeVelocity) / 10, 1);
       window.playBounceSound(intensity);
+    }
+    
+    // If collided with ground, mark for removal
+    const otherBody = event.body === ballBody ? event.target : event.body;
+    if (otherBody.userData && otherBody.userData.isGround) {
+      ballBody.userData = ballBody.userData || {};
+      ballBody.userData.shouldRemove = true;
     }
   });
   
@@ -327,8 +338,9 @@ function animate() {
     balls[i].mesh.position.copy(balls[i].body.position);
     balls[i].mesh.quaternion.copy(balls[i].body.quaternion);
     
-    // Remove balls that fall too far
-    if (balls[i].body.position.y < -10) {
+    // Remove balls that hit the ground or fall too far
+    if ((balls[i].body.userData && balls[i].body.userData.shouldRemove) || 
+        balls[i].body.position.y < -10) {
       scene.remove(balls[i].mesh);
       world.removeBody(balls[i].body);
       balls.splice(i, 1);
