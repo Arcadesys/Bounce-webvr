@@ -394,5 +394,40 @@ export function ensureToneInitialized() {
   });
 }
 
+/**
+ * Stop all sounds immediately
+ * Use this to handle stuck notes or when changing scenes
+ */
+export function stopAllSounds() {
+  try {
+    // Stop any playing notes on the main synth
+    if (synthInstance) {
+      synthInstance.triggerRelease();
+    }
+    
+    // Stop any playing notes on the bounce synth
+    if (bounceSynthInstance) {
+      bounceSynthInstance.triggerRelease();
+    }
+    
+    // Dispose and recreate synths if there's a persistent ringing
+    if (synthInstance) {
+      const currentSettings = synthInstance.get();
+      synthInstance.dispose();
+      synthInstance = new Tone.Synth(currentSettings).toDestination();
+    }
+    
+    if (bounceSynthInstance) {
+      const bounceSettings = bounceSynthInstance.get();
+      bounceSynthInstance.dispose();
+      bounceSynthInstance = new Tone.Synth(bounceSettings).toDestination();
+    }
+    
+    console.log("All sounds stopped");
+  } catch (e) {
+    console.error("Error stopping sounds:", e);
+  }
+}
+
 // Export default settings and instrument prefabs for reference
 export { DEFAULT_SYNTH_SETTINGS, INSTRUMENT_PREFABS }; 

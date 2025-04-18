@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import * as Tone from 'tone';
 import { mapLengthToNote, getNoteColor, playNoteForLength } from '../utils/midiSequencer';
-import { playBounceSound, playNote, ensureToneInitialized } from '../utils/synthManager';
+import { playBounceSound, playNote, ensureToneInitialized, stopAllSounds } from '../utils/synthManager';
 import NoteDisplay from './NoteDisplay';
 import SelectionManager from '../utils/SelectionManager';
 import SettingsMenu from './SettingsMenu';
@@ -884,6 +884,18 @@ export default function BounceScene() {
       window.addEventListener('mouseup', onMouseUp);
       window.addEventListener('resize', onWindowResize);
       window.addEventListener('touchstart', onTouchStart);
+      
+      // Add keyboard event handler for Escape key to stop sounds
+      window.addEventListener('keydown', onKeyDown);
+    }
+    
+    // Handle keyboard events
+    function onKeyDown(event) {
+      // Stop all sounds when Escape key is pressed
+      if (event.key === 'Escape') {
+        stopAllSounds();
+        console.log("Stopped all sounds with Escape key");
+      }
     }
     
     // Initialize scene
@@ -903,6 +915,7 @@ export default function BounceScene() {
       window.removeEventListener('mouseup', onMouseUp);
       window.removeEventListener('resize', onWindowResize);
       window.removeEventListener('touchstart', onTouchStart);
+      window.removeEventListener('keydown', onKeyDown);
       
       // Remove custom event listeners
       window.removeEventListener('deleteObject', handleDeleteObject);
@@ -953,6 +966,9 @@ export default function BounceScene() {
     
     // Update the dispenser's properties
     if (settings.sequencerSteps !== undefined) {
+      // Stop any stuck notes before updating
+      stopAllSounds();
+      
       dispenserMesh.userData.sequencerSteps = [...settings.sequencerSteps];
       
       // Restart the sequence to apply the new pattern
@@ -1113,6 +1129,15 @@ export default function BounceScene() {
             aria-label="Toggle sound"
           >
             🔊
+          </button>
+          
+          <button 
+            id="mute-button" 
+            className="control-button mute-button" 
+            onClick={() => stopAllSounds()}
+            aria-label="Stop all sounds"
+          >
+            🔇
           </button>
         </div>
         
