@@ -20,6 +20,8 @@ export default function BounceScene() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   // State for ball count
   const [ballCount, setBallCount] = useState(0);
+  // State to track dispensers
+  const [dispenserCount, setDispenserCount] = useState(0);
   
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -36,6 +38,10 @@ export default function BounceScene() {
     let currentWallMesh = null;
     let audioContext;
     let soundEnabled = true;
+    let dispensers = []; // Array to hold all dispensers
+    let mouse = new THREE.Vector2(); // Mouse position for raycasting
+    let raycaster = new THREE.Raycaster(); // Raycaster for mouse interaction
+    let drawingPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0); // Plane for mouse interaction
     
     // Define physics materials inside the useEffect
     const ballMaterial = new CANNON.Material("ballMaterial");
@@ -208,6 +214,73 @@ export default function BounceScene() {
       
       world.addBody(boundaryBody);
       return boundaryBody;
+    }
+    
+    // Create a dispenser at the specified position
+    function createDispenser(position) {
+      // Create visual indicator for dispenser
+      const geometry = new THREE.CylinderGeometry(0.3, 0.3, 0.5, 16);
+      const material = new THREE.MeshStandardMaterial({ 
+        color: 0x00aaff,
+        roughness: 0.4,
+        metalness: 0.6,
+        emissive: 0x005588,
+        emissiveIntensity: 0.3
+      });
+      const dispenserMesh = new THREE.Mesh(geometry, material);
+      dispenserMesh.position.copy(position);
+      dispenserMesh.castShadow = true;
+      dispenserMesh.receiveShadow = true;
+      scene.add(dispenserMesh);
+      
+      // Add success sound effect for dispenser placement
+      playNote('C5', '16n');
+      
+      // Create sequencer for this dispenser using Tone.js Transport
+      let sequencerId = null;
+      
+      // Function to schedule ball drops
+      const startSequence = () => {
+        // Create loop that fires on quarter notes
+        sequencerId = Tone.Transport.scheduleRepeat((time) => {
+          // Create ball position slightly above the dispenser
+          const ballPosition = new THREE.Vector3(
+            position.x, 
+            position.y + 0.5, 
+            position.z
+          );
+          
+          // Create the ball
+          const ball = createBall(ballPosition);
+          balls.push(ball);
+          setBallCount(prevCount => prevCount + 1);
+          
+          // Play a tick sound when ball is dropped
+          playNote('G4', '32n', time, 0.4);
+        }, '4n'); // Schedule on quarter notes
+        
+        // Start the transport if it's not already running
+        if (Tone.Transport.state !== 'started') {
+          Tone.Transport.start();
+        }
+      };
+      
+      // Store dispenser data
+      const dispenser = {
+        mesh: dispenserMesh,
+        position: position.clone(),
+        sequencerId: sequencerId,
+        isActive: true
+      };
+      
+      // Add to dispensers array
+      dispensers.push(dispenser);
+      setDispenserCount(prevCount => prevCount + 1);
+      
+      // Start the sequence
+      startSequence();
+      
+      return dispenser;
     }
     
     // Create a ball at the specified position
@@ -423,11 +496,6 @@ export default function BounceScene() {
       scene.add(currentWallMesh);
     }
     
-    // Raycaster for mouse interaction
-    const raycaster = new THREE.Raycaster();
-    const mouse = new THREE.Vector2();
-    const drawingPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
-    
     // Mouse event handlers
     function onMouseDown(event) {
       // Get mouse position
@@ -441,6 +509,14 @@ export default function BounceScene() {
       
       // Cast ray from mouse position into scene
       raycaster.setFromCamera(mouse, camera);
+      
+      // Create dispenser if cmd key (macOS) or ctrl key (Windows/Linux) is pressed
+      if (event.metaKey || event.ctrlKey) {
+        const intersection = new THREE.Vector3();
+        raycaster.ray.intersectPlane(drawingPlane, intersection);
+        createDispenser(intersection);
+        return;
+      }
       
       // If shift is held, start drawing a wall
       if (event.shiftKey) {
@@ -673,7 +749,7 @@ export default function BounceScene() {
     
     // Cleanup function
     return () => {
-      // Remove event listeners
+      // Clean up all event listeners
       window.removeEventListener('mousedown', onMouseDown);
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
@@ -698,17 +774,26 @@ export default function BounceScene() {
         settingsButton.removeEventListener('click', window.toggleSettings);
       }
       
+      // Cleanup Tone.js resources
+      if (Tone.Transport) {
+        Tone.Transport.stop();
+        Tone.Transport.cancel();
+      }
+      
+      // Clean up physics body references
+      dispensers.forEach(dispenser => {
+        if (dispenser.sequencerId !== null) {
+          Tone.Transport.clear(dispenser.sequencerId);
+        }
+      });
+      
       // Stop animation frame
       cancelAnimationFrame(animate);
       
-      // Dispose renderer
+      // Clean up Three.js resources
       if (renderer) {
         renderer.dispose();
-      }
-      
-      // Remove canvas from DOM
-      if (mountRef.current && renderer && renderer.domElement) {
-        mountRef.current.removeChild(renderer.domElement);
+        mountRef.current?.removeChild(renderer.domElement);
       }
     };
   }, []);
@@ -754,6 +839,7 @@ export default function BounceScene() {
         <h2>Musical Bounce Controls</h2>
         <p>Click to drop balls</p>
         <p>Shift + Click + Drag to create walls</p>
+        <p><span role="img" aria-label="Command key">⌘</span>/<span role="img" aria-label="Control key">Ctrl</span> + Click: Place a rhythm dispenser</p>
         <p>Wall length determines pitch (2 octaves of C major)</p>
       </div>
       <button id="sound-toggle" aria-label="Toggle sound">🔊</button>
@@ -763,56 +849,42 @@ export default function BounceScene() {
         <span role="status">Balls: {ballCount}</span>
       </div>
       
+      {/* Dispenser counter */}
+      <div className="dispenser-counter" aria-live="polite">
+        <span role="status">Dispensers: {dispenserCount}</span>
+      </div>
+      
       {/* Settings button (hamburger with circle) */}
       <button 
         id="settings-button" 
-        className="settings-toggle" 
-        aria-label="Toggle settings menu" 
-        aria-expanded={isSettingsOpen}
+        className={`settings-button ${isSettingsOpen ? 'active' : ''}`}
         onClick={toggleSettings}
+        aria-label="Settings"
+        aria-expanded={isSettingsOpen}
       >
-        <div className="hamburger-icon">
+        <div className="hamburger">
           <span></span>
           <span></span>
           <span></span>
         </div>
       </button>
       
-      {/* Settings menu */}
-      <div id="settings-menu" className={`settings-panel ${isSettingsOpen ? 'open' : ''}`}>
-        <h3>Settings</h3>
-        
-        {/* Bounciness slider moved from instructions */}
-        <div className="slider-container">
-          <label htmlFor="bounciness-slider">Platform Bounciness:</label>
+      {/* Settings panel */}
+      <div className={`settings-panel ${isSettingsOpen ? 'open' : ''}`} aria-hidden={!isSettingsOpen}>
+        <h3>Bounce Settings</h3>
+        <div className="setting">
+          <label htmlFor="bounciness">Bounciness</label>
           <input 
             type="range" 
-            id="bounciness-slider" 
-            name="bounciness" 
+            id="bounciness" 
             min="0.1" 
-            max="10.0" 
-            step="0.2" 
-            defaultValue="0.5" 
-            onChange={handleBouncinessChange} 
-            aria-label="Adjust Platform Bounciness"
+            max="0.99" 
+            step="0.01" 
+            defaultValue="0.97"
+            onChange={handleBouncinessChange}
+            aria-label="Adjust bounciness from 0.1 to 0.99"
           />
-          <span id="bounciness-value">0.50</span>
-        </div>
-        
-        {/* Ball material picker */}
-        <div className="material-picker">
-          <label htmlFor="ball-material">Ball Material:</label>
-          <select 
-            id="ball-material" 
-            name="material" 
-            defaultValue="golf"
-            aria-label="Select Ball Material"
-          >
-            <option value="golf">Golf Ball</option>
-            <option value="rubber">Rubber Ball</option>
-            <option value="steel">Steel Ball</option>
-            <option value="wood">Wooden Ball</option>
-          </select>
+          <div className="value" id="bounciness-value">0.97</div>
         </div>
       </div>
       
