@@ -103,4 +103,26 @@ export function updatePhysics(world, timeStep = 1/60) {
  */
 export function isBallOutOfBounds(ballBody, lowerBound = -10) {
   return ballBody.position.y < lowerBound;
+}
+
+/**
+ * Removes balls that have fallen out of bounds
+ * @param {Array} balls - Array of ball objects with mesh and body properties
+ * @param {THREE.Scene} scene - The three.js scene
+ * @param {CANNON.World} world - The physics world
+ * @param {Number} lowerBound - The lower bound for y position
+ * @returns {Number} The number of balls removed
+ */
+export function cleanupBalls(balls, scene, world, lowerBound = -10) {
+  let removed = 0;
+  for (let i = 0; i < balls.length; i++) {
+    if (balls[i].body.position.y < lowerBound) {
+      scene.remove(balls[i].mesh);
+      world.removeBody(balls[i].body);
+      balls.splice(i, 1);
+      i--;
+      removed++;
+    }
+  }
+  return removed;
 } 
