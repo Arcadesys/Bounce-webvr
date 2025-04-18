@@ -33,7 +33,7 @@ function initAudio() {
 }
 
 // Toggle sound
-soundToggle.addEventListener('click', () => {
+soundToggle?.addEventListener('click', () => {
   soundEnabled = !soundEnabled;
   soundToggle.textContent = soundEnabled ? '🔊' : '🔇';
   soundToggle.setAttribute('aria-label', soundEnabled ? 'Sound On' : 'Sound Off');
@@ -45,7 +45,7 @@ soundToggle.addEventListener('click', () => {
 });
 
 // Scene setup
-const scene = new THREE.Scene();
+export const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87CEEB); // Sky blue background
 
 // Camera setup
@@ -56,7 +56,7 @@ camera.position.z = 5;
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
-document.body.appendChild(renderer.domElement);
+document.body?.appendChild(renderer.domElement);
 
 // Lighting
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
@@ -70,7 +70,7 @@ directionalLight.shadow.mapSize.height = 2048;
 scene.add(directionalLight);
 
 // Physics world
-const world = new CANNON.World({
+export const world = new CANNON.World({
   gravity: new CANNON.Vec3(0, -9.82, 0)
 });
 
@@ -110,7 +110,7 @@ let wallEnd = new THREE.Vector3();
 let currentWallMesh = null;
 
 // Create a ball at the specified position
-function createBall(position) {
+export function createBall(position) {
   const radius = 0.2;
   
   // Physical body
@@ -152,7 +152,7 @@ function createBall(position) {
 }
 
 // Create a wall between two points
-function createWall(start, end) {
+export function createWall(start, end) {
   // Calculate wall properties
   const direction = new THREE.Vector3().subVectors(end, start);
   const length = direction.length();

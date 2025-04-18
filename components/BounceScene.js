@@ -2,6 +2,15 @@ import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 
+// Define physics materials
+const ballMaterial = new CANNON.Material("ballMaterial");
+ballMaterial.friction = 0.3;
+ballMaterial.restitution = 0.7; // Default ball restitution
+
+const platformMaterial = new CANNON.Material("platformMaterial");
+platformMaterial.friction = 0.1; // Low friction for platforms
+platformMaterial.restitution = 0.5; // Default platform restitution (will be controlled by slider)
+
 export default function BounceScene() {
   const mountRef = useRef(null);
   
@@ -20,6 +29,8 @@ export default function BounceScene() {
     let currentWallMesh = null;
     let audioContext;
     let soundEnabled = true;
+    // Keep track of the shared platform material contact properties
+    let ballPlatformContactMaterial;
     
     // Audio context for sound effects
     function initAudio() {
@@ -81,10 +92,22 @@ export default function BounceScene() {
         gravity: new CANNON.Vec3(0, -9.82, 0)
       });
       
+      // Add contact material between balls and platforms
+      ballPlatformContactMaterial = new CANNON.ContactMaterial(
+        ballMaterial,
+        platformMaterial,
+        {
+          friction: 0.0, // Low friction between ball and platform
+          restitution: platformMaterial.restitution, // Use the platform's restitution
+        }
+      );
+      world.addContactMaterial(ballPlatformContactMaterial);
+      
       // Ground plane - invisible physics plane
       const groundBody = new CANNON.Body({
         type: CANNON.Body.STATIC,
         shape: new CANNON.Plane(),
+        material: platformMaterial // Assign platform material
       });
       groundBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
       groundBody.position.y = -2;
@@ -114,10 +137,7 @@ export default function BounceScene() {
         shape: new CANNON.Sphere(radius),
         position: new CANNON.Vec3(position.x, position.y, position.z),
         linearDamping: 0.1,
-        material: new CANNON.Material({
-          friction: 0.3,
-          restitution: 0.7, // Bounciness
-        })
+        material: ballMaterial // Assign ball material
       });
       
       world.addBody(ballBody);
@@ -163,6 +183,7 @@ export default function BounceScene() {
         mass: 0, // Static body
         position: new CANNON.Vec3(center.x, center.y, center.z),
         shape: wallShape,
+        material: platformMaterial // Assign platform material
       });
       
       // Rotate to match visual representation
@@ -396,14 +417,95 @@ export default function BounceScene() {
     };
   }, []);
   
+  // Function to update platform bounciness
+  const handleBouncinessChange = (event) => {
+    const newRestitution = parseFloat(event.target.value);
+    if (ballPlatformContactMaterial) {
+      ballPlatformContactMaterial.restitution = newRestitution;
+    }
+    // Update display value
+    const display = document.getElementById('bounciness-value');
+    if (display) {
+      display.textContent = newRestitution.toFixed(2);
+    }
+    // Optional: Play a subtle tone here
+    // e.g., playTickSound(newRestitution);
+  };
+
   return (
     <div className="scene-container" ref={mountRef} style={{ width: '100%', height: '100vh' }}>
       <div id="instructions">
         <h2>Bounce Controls</h2>
         <p>Click to drop balls</p>
         <p>Shift + Click + Drag to create walls</p>
+        <div className="slider-container">
+          <label htmlFor="bounciness-slider">Platform Bounciness:</label>
+          <input 
+            type="range" 
+            id="bounciness-slider" 
+            name="bounciness" 
+            min="0.1" 
+            max="2.0" 
+            step="0.1" 
+            defaultValue={platformMaterial.restitution} // Use initial default
+            onChange={handleBouncinessChange} 
+            aria-label="Adjust Platform Bounciness"
+          />
+          <span id="bounciness-value">{platformMaterial.restitution.toFixed(2)}</span>
+        </div>
       </div>
       <button id="sound-toggle" aria-label="Toggle sound">🔊</button>
     </div>
   );
+}
+
+// Add some basic styling for the slider
+// Ideally, this would go in a separate CSS file
+const styles = `
+.slider-container {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+#bounciness-slider {
+  width: 150px;
+}
+
+#bounciness-value {
+  min-width: 30px; /* Prevent layout shift */
+  text-align: right;
+}
+
+/* You might need styles for #instructions, #sound-toggle etc. */
+#instructions {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  padding: 10px;
+  border-radius: 5px;
+  z-index: 10;
+}
+
+#sound-toggle {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  font-size: 1.5em;
+  background: none;
+  border: none;
+  cursor: pointer;
+  z-index: 10;
+}
+`;
+
+// Inject styles into the head - simple way for this example
+if (typeof window !== 'undefined') {
+  const styleSheet = document.createElement("style");
+  styleSheet.type = "text/css";
+  styleSheet.innerText = styles;
+  document.head.appendChild(styleSheet);
 } 
