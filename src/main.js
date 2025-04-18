@@ -111,6 +111,55 @@ let isDrawing = false;
 let wallStart = new THREE.Vector3();
 let wallEnd = new THREE.Vector3();
 let currentWallMesh = null;
+let drawMode = true; // true for drawing walls, false for dropping balls
+
+// Create a UI indicator for current mode
+function createModeIndicator() {
+  const indicator = document.createElement('div');
+  indicator.id = 'mode-indicator';
+  indicator.style.position = 'absolute';
+  indicator.style.bottom = '20px';
+  indicator.style.left = '20px';
+  indicator.style.padding = '10px';
+  indicator.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+  indicator.style.color = 'white';
+  indicator.style.fontFamily = 'Arial, sans-serif';
+  indicator.style.borderRadius = '5px';
+  indicator.style.zIndex = '1000';
+  indicator.style.userSelect = 'none';
+  updateModeIndicator(indicator);
+  document.body.appendChild(indicator);
+  return indicator;
+}
+
+// Update the mode indicator text based on current mode
+function updateModeIndicator(indicator) {
+  if (!indicator) return;
+  
+  if (drawMode) {
+    indicator.textContent = '🖊️ Draw Mode (Shift to toggle)';
+    indicator.style.borderLeft = '4px solid #4CAF50';
+  } else {
+    indicator.textContent = '🏀 Ball Mode (Shift to toggle)';
+    indicator.style.borderLeft = '4px solid #2196F3';
+  }
+  
+  // Play a gentle tone to notify of mode change
+  if (audioContext && soundEnabled) {
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    oscillator.type = drawMode ? 'sine' : 'triangle';
+    oscillator.frequency.value = drawMode ? 440 : 330; // A4 or E4
+    gainNode.gain.value = 0.1;
+    oscillator.start();
+    gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.3);
+    oscillator.stop(audioContext.currentTime + 0.3);
+  }
+}
+
+const modeIndicator = createModeIndicator();
 
 // Create a ball at the specified position
 export function createBall(position) {
@@ -276,11 +325,17 @@ function onMouseDown(event) {
     initAudio();
   }
   
-  // Cast ray from mouse position into scene
   raycaster.setFromCamera(mouse, camera);
   
-  // If shift is held, start drawing a wall
+  // Toggle draw mode with Shift key
   if (event.shiftKey) {
+    drawMode = !drawMode;
+    updateModeIndicator(modeIndicator);
+    return;
+  }
+  
+  if (drawMode) {
+    // Start drawing a wall on click
     isDrawing = true;
     const intersection = new THREE.Vector3();
     raycaster.ray.intersectPlane(drawingPlane, intersection);
@@ -288,7 +343,7 @@ function onMouseDown(event) {
     wallEnd = intersection.clone();
     updateTempWall();
   } else {
-    // Otherwise, drop a ball
+    // Drop a ball
     const intersection = new THREE.Vector3();
     raycaster.ray.intersectPlane(drawingPlane, intersection);
     const ball = createBall(intersection);
@@ -312,6 +367,15 @@ function onMouseMove(event) {
 function onMouseUp(event) {
   if (isDrawing) {
     isDrawing = false;
+    
+    // Update final position
+    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+    raycaster.setFromCamera(mouse, camera);
+    const intersection = new THREE.Vector3();
+    raycaster.ray.intersectPlane(drawingPlane, intersection);
+    wallEnd = intersection;
+    
     // Only create a wall if it has some length
     if (wallStart.distanceTo(wallEnd) > 0.2) {
       createWall(wallStart, wallEnd);
@@ -337,7 +401,7 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-// Allow dropping a ball with a touch on mobile
+// Allow drawing or dropping a ball with touch on mobile
 window.addEventListener('touchstart', (event) => {
   // Initialize audio on first interaction
   if (!audioContext) {
@@ -352,8 +416,52 @@ window.addEventListener('touchstart', (event) => {
   raycaster.setFromCamera(mouse, camera);
   const intersection = new THREE.Vector3();
   raycaster.ray.intersectPlane(drawingPlane, intersection);
-  const ball = createBall(intersection);
-  balls.push(ball);
+  
+  if (drawMode) {
+    // Start drawing a wall
+    isDrawing = true;
+    wallStart = intersection.clone();
+    wallEnd = intersection.clone();
+    updateTempWall();
+  } else {
+    // Drop a ball
+    const ball = createBall(intersection);
+    balls.push(ball);
+  }
+});
+
+// Handle touch move for drawing
+window.addEventListener('touchmove', (event) => {
+  if (isDrawing) {
+    event.preventDefault();
+    const touch = event.touches[0];
+    mouse.x = (touch.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(touch.clientY / window.innerHeight) * 2 + 1;
+    
+    raycaster.setFromCamera(mouse, camera);
+    const intersection = new THREE.Vector3();
+    raycaster.ray.intersectPlane(drawingPlane, intersection);
+    wallEnd = intersection;
+    updateTempWall();
+  }
+});
+
+// Handle touch end for completing a wall
+window.addEventListener('touchend', (event) => {
+  if (isDrawing) {
+    isDrawing = false;
+    
+    // Only create a wall if it has some length
+    if (wallStart.distanceTo(wallEnd) > 0.2) {
+      createWall(wallStart, wallEnd);
+      
+      // Remove temporary wall
+      if (currentWallMesh) {
+        scene.remove(currentWallMesh);
+        currentWallMesh = null;
+      }
+    }
+  }
 });
 
 // Animation loop
