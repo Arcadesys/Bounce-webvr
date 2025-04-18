@@ -153,12 +153,12 @@ export default function BounceScene() {
       
       // Visual ball
       const ballGeometry = new THREE.SphereGeometry(radius, 32, 32);
-      const ballMaterial = new THREE.MeshStandardMaterial({ 
+      const visualBallMaterial = new THREE.MeshStandardMaterial({ 
         color: Math.random() * 0xffffff,
         roughness: 0.4,
         metalness: 0.3
       });
-      const ballMesh = new THREE.Mesh(ballGeometry, ballMaterial);
+      const ballMesh = new THREE.Mesh(ballGeometry, visualBallMaterial);
       ballMesh.castShadow = true;
       ballMesh.receiveShadow = true;
       scene.add(ballMesh);
