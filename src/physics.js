@@ -69,7 +69,7 @@ export function createWallBody(start, end, world = null) {
   const angle = Math.atan2(direction.x, direction.y);
   
   // Create physical wall
-  const wallShape = new CANNON.Box(new CANNON.Vec3(length/2, 0.5, 0.1));
+  const wallShape = new CANNON.Box(new CANNON.Vec3(length/2, 0.5, 0.5));
   const wallBody = new CANNON.Body({
     mass: 0, // Static body
     position: new CANNON.Vec3(center.x, center.y, center.z),

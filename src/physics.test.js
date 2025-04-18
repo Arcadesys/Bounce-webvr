@@ -122,7 +122,7 @@ describe('Physics Module', () => {
       expect(CANNON.Box).toHaveBeenCalledWith(expect.objectContaining({
         x: 2.5,
         y: 0.5,
-        z: 0.1
+        z: 0.5
       }));
     });
     
