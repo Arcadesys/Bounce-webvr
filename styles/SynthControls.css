@@ -1,0 +1,77 @@
+/* SynthControls.css */
+.synth-controls {
+  position: relative;
+  z-index: 10;
+}
+
+.synth-toggle-button {
+  align-items: center;
+  background-color: #3f51b5;
+  border: none;
+  border-radius: 50px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+  color: white;
+  cursor: pointer;
+  display: flex;
+  font-size: 16px;
+  font-weight: bold;
+  gap: 8px;
+  padding: 10px 20px;
+  position: fixed;
+  right: 20px;
+  top: 20px;
+  transition: background-color 0.2s ease, transform 0.2s ease;
+  z-index: 20;
+}
+
+.synth-toggle-button:hover {
+  background-color: #303f9f;
+  transform: translateY(-2px);
+}
+
+.synth-toggle-button:active {
+  transform: translateY(0);
+}
+
+.synth-toggle-button .icon {
+  font-size: 20px;
+}
+
+.synth-customizer-overlay {
+  background-color: rgba(0, 0, 0, 0.7);
+  height: 100%;
+  left: 0;
+  padding: 20px;
+  position: fixed;
+  top: 0;
+  width: 100%;
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow-y: auto;
+}
+
+/* Accessible focus styles */
+.synth-toggle-button:focus {
+  outline: 3px solid #4caf50;
+  outline-offset: 2px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 600px) {
+  .synth-toggle-button {
+    font-size: 14px;
+    padding: 8px 15px;
+    right: 10px;
+    top: 10px;
+  }
+  
+  .synth-toggle-button .text {
+    display: none; /* Hide text on small screens, show only icon */
+  }
+  
+  .synth-customizer-overlay {
+    padding: 10px;
+  }
+} 

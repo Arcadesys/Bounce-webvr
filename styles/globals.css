@@ -1,3 +1,6 @@
+@import './SynthCustomizer.css';
+@import './SynthControls.css';
+
 * {
   box-sizing: border-box;
   padding: 0;

@@ -7,6 +7,11 @@ const BounceScene = dynamic(() => import('@/components/BounceScene'), {
   ssr: false
 });
 
+// Import the SynthControls component with no SSR (since it uses audio)
+const SynthControls = dynamic(() => import('@/components/SynthControls'), {
+  ssr: false
+});
+
 export default function Home() {
   const [isClient, setIsClient] = useState(false);
   
@@ -23,7 +28,12 @@ export default function Home() {
         <link rel="icon" href="/favicon.ico" />
       </Head>
       <main>
-        {isClient && <BounceScene />}
+        {isClient && (
+          <>
+            <BounceScene />
+            <SynthControls />
+          </>
+        )}
       </main>
     </>
   );

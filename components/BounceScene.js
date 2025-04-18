@@ -4,6 +4,11 @@ import * as CANNON from 'cannon-es';
 // Import the MIDI sequencer utilities
 import { mapLengthToNote, getNoteColor, playNoteForLength } from '../utils/midiSequencer';
 import NoteDisplay from './NoteDisplay';
+// Import the synthManager functions at the top of the file
+import { 
+  playBounceSound, 
+  playModeChangeSound 
+} from '../utils/synthManager';
 
 export default function BounceScene() {
   const mountRef = useRef(null);
@@ -51,28 +56,11 @@ export default function BounceScene() {
     
     // Audio context for sound effects
     function initAudio() {
-      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      // No need to create audioContext - synthManager handles this
+      audioContext = true; // Just a flag to indicate audio is initialized
       
-      // Create success sound function
-      window.playBounceSound = (intensity = 1.0) => {
-        if (!soundEnabled || !audioContext) return;
-        
-        const oscillator = audioContext.createOscillator();
-        const gainNode = audioContext.createGain();
-        
-        oscillator.type = 'sine';
-        oscillator.frequency.setValueAtTime(300 + intensity * 200, audioContext.currentTime);
-        oscillator.frequency.exponentialRampToValueAtTime(200, audioContext.currentTime + 0.1);
-        
-        gainNode.gain.setValueAtTime(intensity * 0.3, audioContext.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.2);
-        
-        oscillator.connect(gainNode);
-        gainNode.connect(audioContext.destination);
-        
-        oscillator.start();
-        oscillator.stop(audioContext.currentTime + 0.2);
-      };
+      // Use our global playBounceSound function
+      window.playBounceSound = playBounceSound;
     }
     
     // Initialize Three.js scene
@@ -271,26 +259,26 @@ export default function BounceScene() {
           
           // Play a bounce sound with volume based on velocity
           const volume = Math.min(0.5, Math.abs(impactVelocity) / 10);
-          if (audioContext && soundEnabled) {
-            window.playBounceSound(volume);
+          if (soundEnabled) {
+            playBounceSound(volume);
           }
           
         } else if (targetBody.userData && targetBody.userData.isGround) {
           // Ground collision - bouncy for golf ball
           
           // Play bounce sound
-          if (audioContext && soundEnabled) {
+          if (soundEnabled) {
             const speed = sphereBody.velocity.length();
             const volume = Math.min(0.3, speed / 10);
-            window.playBounceSound(volume);
+            playBounceSound(volume);
           }
           
         } else if (targetBody.userData && targetBody.userData.isBoundary) {
           // Boundary collision - bounce realistically
-          if (audioContext && soundEnabled) {
+          if (soundEnabled) {
             const speed = sphereBody.velocity.length();
             const volume = Math.min(0.4, speed / 8);
-            window.playBounceSound(volume);
+            playBounceSound(volume);
           }
         } else {
           // Other collisions
@@ -298,10 +286,10 @@ export default function BounceScene() {
           sphereBody.velocity.scale(0.99, sphereBody.velocity);
           
           // Play bounce sound
-          if (audioContext && soundEnabled) {
+          if (soundEnabled) {
             const speed = sphereBody.velocity.length();
             const volume = Math.min(0.2, speed / 15);
-            window.playBounceSound(volume);
+            playBounceSound(volume);
           }
         }
       });
@@ -397,8 +385,8 @@ export default function BounceScene() {
       walls.push(wallMesh);
       
       // Play the note when the wall is created
-      if (audioContext && soundEnabled) {
-        playNoteForLength(audioContext, length, 0.5, 0.3);
+      if (soundEnabled) {
+        playNoteForLength(null, length, 0.5, 0.3);
       }
       
       return { body: wallBody, mesh: wallMesh, note: note };
@@ -582,8 +570,8 @@ export default function BounceScene() {
       }
       
       // Play a subtle feedback tone when material changes
-      if (window.playBounceSound) {
-        window.playBounceSound(ballMaterial.restitution * 0.4);
+      if (soundEnabled) {
+        playBounceSound(ballMaterial.restitution * 0.4);
       }
     }
     
@@ -750,8 +738,8 @@ export default function BounceScene() {
     }
     
     // Play a subtle feedback tone when value changes
-    if (window.playBounceSound) {
-      window.playBounceSound(newRestitution * 0.3);
+    if (soundEnabled) {
+      playBounceSound(newRestitution * 0.3);
     }
   };
   

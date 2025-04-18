@@ -1,0 +1,158 @@
+/* SynthCustomizer.css */
+.synth-customizer {
+  background-color: #f0f0f0;
+  border-radius: 8px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  color: #333;
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 20px;
+  width: 100%;
+}
+
+.synth-customizer h2 {
+  color: #1a237e;
+  font-size: 24px;
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.synth-customizer h3 {
+  color: #333;
+  font-size: 18px;
+  margin-bottom: 10px;
+}
+
+.control-group {
+  margin-bottom: 20px;
+}
+
+.control-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.control-row label {
+  align-items: center;
+  display: flex;
+  flex-grow: 1;
+  font-weight: bold;
+  gap: 10px;
+  width: 100%;
+}
+
+.control-row input[type="range"] {
+  flex-grow: 1;
+  margin: 0 10px;
+}
+
+.control-row span {
+  min-width: 60px;
+  text-align: right;
+}
+
+.control-row button {
+  background-color: #e0e0e0;
+  border: 2px solid #ccc;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: bold;
+  padding: 8px 12px;
+  transition: all 0.2s ease;
+}
+
+.control-row button:hover {
+  background-color: #d0d0d0;
+}
+
+.control-row button.active {
+  background-color: #4caf50;
+  border-color: #2e7d32;
+  color: white;
+}
+
+.test-button {
+  background-color: #3f51b5;
+  border: none;
+  border-radius: 4px;
+  color: white;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: bold;
+  padding: 10px 16px;
+  transition: background-color 0.2s ease;
+}
+
+.test-button:hover {
+  background-color: #303f9f;
+}
+
+.test-button.active {
+  background-color: #f44336;
+}
+
+.button-row {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 30px;
+  gap: 15px;
+}
+
+.apply-button, .cancel-button {
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: bold;
+  padding: 10px 20px;
+  transition: background-color 0.2s ease;
+  flex-grow: 1;
+}
+
+.apply-button {
+  background-color: #4caf50;
+  color: white;
+}
+
+.apply-button:hover {
+  background-color: #388e3c;
+}
+
+.cancel-button {
+  background-color: #f44336;
+  color: white;
+}
+
+.cancel-button:hover {
+  background-color: #d32f2f;
+}
+
+/* Accessible focus styles */
+button:focus, input:focus {
+  outline: 3px solid #2196f3;
+  outline-offset: 2px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 600px) {
+  .synth-customizer {
+    padding: 15px;
+  }
+  
+  .control-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .control-row label {
+    margin-bottom: 5px;
+  }
+  
+  .button-row {
+    flex-direction: column;
+  }
+} 
