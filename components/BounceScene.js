@@ -22,7 +22,41 @@ export default function BounceScene() {
   const [ballCount, setBallCount] = useState(0);
   // State to track dispensers
   const [dispenserCount, setDispenserCount] = useState(0);
+  // State for tempo (BPM)
+  const [tempo, setTempo] = useState(() => {
+    // Initialize from localStorage or default to 120 BPM
+    const savedTempo = localStorage.getItem('preferredTempo');
+    return savedTempo ? parseInt(savedTempo, 10) : 120;
+  });
+  // State for metronome pulse
+  const [metroPulse, setMetroPulse] = useState(false);
   
+  // Effect to initialize Tone.js Transport with the current tempo
+  useEffect(() => {
+    if (Tone.Transport) {
+      Tone.Transport.bpm.value = tempo;
+    }
+  }, [tempo]);
+  
+  // Effect to set up metronome visualization that pulses with the beat
+  useEffect(() => {
+    let metronomeId = null;
+    
+    if (Tone.Transport) {
+      // Set up a callback that fires on each quarter note to animate the metronome
+      metronomeId = Tone.Transport.scheduleRepeat((time) => {
+        // Visual feedback - toggle the pulse state
+        setMetroPulse(prev => !prev);
+      }, '4n');
+    }
+    
+    return () => {
+      if (metronomeId !== null && Tone.Transport) {
+        Tone.Transport.clear(metronomeId);
+      }
+    };
+  }, []);
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
     
@@ -258,6 +292,9 @@ export default function BounceScene() {
           // Play a tick sound when ball is dropped
           playNote('G4', '32n', time, 0.4);
         }, '4n'); // Schedule on quarter notes
+        
+        // Make sure transport is using current tempo
+        Tone.Transport.bpm.value = tempo;
         
         // Start the transport if it's not already running
         if (Tone.Transport.state !== 'started') {
@@ -828,6 +865,29 @@ export default function BounceScene() {
     };
   };
   
+  // Function to update tempo (BPM)
+  const handleTempoChange = (event) => {
+    const newTempo = parseInt(event.target.value, 10);
+    setTempo(newTempo);
+    
+    // Update the Transport BPM
+    if (Tone.Transport) {
+      Tone.Transport.bpm.value = newTempo;
+    }
+    
+    // Store in localStorage
+    localStorage.setItem('preferredTempo', newTempo.toString());
+    
+    // Play a subtle feedback tone when value changes
+    if (typeof playNote === 'function') {
+      // Map tempo to a note in the C major scale
+      const noteIndex = Math.floor((newTempo - 60) / 20) % 7; 
+      const notes = ['C4', 'D4', 'E4', 'F4', 'G4', 'A4', 'B4']; 
+      const note = notes[noteIndex];
+      playNote(note, '16n', undefined, 0.3);
+    }
+  };
+  
   // Toggle settings menu
   const toggleSettings = () => {
     setIsSettingsOpen(!isSettingsOpen);
@@ -852,6 +912,15 @@ export default function BounceScene() {
       {/* Dispenser counter */}
       <div className="dispenser-counter" aria-live="polite">
         <span role="status">Dispensers: {dispenserCount}</span>
+      </div>
+      
+      {/* Visual metronome indicator */}
+      <div 
+        className={`metronome-indicator ${metroPulse ? 'pulse' : ''}`} 
+        aria-label="Tempo indicator" 
+        role="status"
+      >
+        <span className="metronome-dot"></span>
       </div>
       
       {/* Settings button (hamburger with circle) */}
@@ -885,6 +954,21 @@ export default function BounceScene() {
             aria-label="Adjust bounciness from 0.1 to 0.99"
           />
           <div className="value" id="bounciness-value">0.97</div>
+        </div>
+        
+        <div className="setting">
+          <label htmlFor="tempo">Tempo (BPM)</label>
+          <input 
+            type="range" 
+            id="tempo" 
+            min="60" 
+            max="180" 
+            step="1" 
+            value={tempo}
+            onChange={handleTempoChange}
+            aria-label="Adjust tempo from 60 to 180 BPM"
+          />
+          <div className="value" id="tempo-value">{tempo}</div>
         </div>
       </div>
       
