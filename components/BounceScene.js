@@ -6,6 +6,8 @@ export default function BounceScene() {
   const mountRef = useRef(null);
   // Reference to contact material for accessing in slider handler
   const contactMaterialRef = useRef(null);
+  // Store platform material for access from slider handler
+  const platformMaterialRef = useRef(null);
   
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -31,6 +33,9 @@ export default function BounceScene() {
     const platformMaterial = new CANNON.Material("platformMaterial");
     platformMaterial.friction = 0.1; // Low friction for platforms
     platformMaterial.restitution = 0.5; // Default platform restitution (will be controlled by slider)
+    
+    // Store in ref for access outside useEffect
+    platformMaterialRef.current = platformMaterial;
     
     // Keep track of the shared platform material contact properties
     let ballPlatformContactMaterial;
@@ -437,16 +442,27 @@ export default function BounceScene() {
   // Function to update platform bounciness
   const handleBouncinessChange = (event) => {
     const newRestitution = parseFloat(event.target.value);
+    
+    // Update both the contact material and platform material restitution
     if (contactMaterialRef.current) {
       contactMaterialRef.current.restitution = newRestitution;
     }
+    
+    // Update the platform material's restitution for new contacts
+    if (platformMaterialRef.current) {
+      platformMaterialRef.current.restitution = newRestitution;
+    }
+    
     // Update display value
     const display = document.getElementById('bounciness-value');
     if (display) {
       display.textContent = newRestitution.toFixed(2);
     }
-    // Optional: Play a subtle tone here
-    // e.g., playTickSound(newRestitution);
+    
+    // Play a subtle feedback tone when value changes
+    if (window.playBounceSound) {
+      window.playBounceSound(newRestitution * 0.3);
+    }
   };
 
   return (
@@ -462,9 +478,9 @@ export default function BounceScene() {
             id="bounciness-slider" 
             name="bounciness" 
             min="0.1" 
-            max="2.0" 
-            step="0.1" 
-            defaultValue="0.5" // Use static default instead of platformMaterial.restitution
+            max="10.0" 
+            step="0.2" 
+            defaultValue="0.5" 
             onChange={handleBouncinessChange} 
             aria-label="Adjust Platform Bounciness"
           />
