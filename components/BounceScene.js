@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import * as Tone from 'tone';
 import { mapLengthToNote, getNoteColor, playNoteForLength } from '../utils/midiSequencer';
-import { playBounceSound, playNote } from '../utils/synthManager';
+import { playBounceSound, playNote, setInstrumentType, getCurrentInstrumentType, INSTRUMENT_PREFABS } from '../utils/synthManager';
 import NoteDisplay from './NoteDisplay';
 
 export default function BounceScene() {
@@ -30,6 +30,11 @@ export default function BounceScene() {
   });
   // State for metronome pulse
   const [metroPulse, setMetroPulse] = useState(false);
+  
+  // New state for current instrument
+  const [currentInstrument, setCurrentInstrument] = useState(() => {
+    return getCurrentInstrumentType() || 'marimba';
+  });
   
   // Effect to initialize Tone.js Transport with the current tempo
   useEffect(() => {
@@ -892,6 +897,25 @@ export default function BounceScene() {
     setIsSettingsOpen(!isSettingsOpen);
   };
 
+  // Function to handle instrument selection
+  const handleInstrumentChange = (instrument) => {
+    setCurrentInstrument(instrument);
+    setInstrumentType(instrument);
+
+    // Play a test note with the new instrument
+    playNote('C4', '8n', undefined, 0.5);
+  };
+
+  // Function to play a test melody
+  const playTestMelody = () => {
+    const notes = ['C4', 'E4', 'G4', 'C5'];
+    const now = Tone.now();
+    
+    notes.forEach((note, index) => {
+      playNote(note, '8n', now + index * 0.25, 0.5);
+    });
+  };
+
   return (
     <div className="scene-container" ref={mountRef} style={{ width: '100%', height: '100vh' }}>
       <div id="instructions">
@@ -968,6 +992,41 @@ export default function BounceScene() {
             aria-label="Adjust tempo from 60 to 180 BPM"
           />
           <div className="value" id="tempo-value">{tempo}</div>
+        </div>
+        
+        <h3>Sound Settings</h3>
+        <div className="setting instrument-settings">
+          <label>Instrument Type</label>
+          <div className="instrument-buttons">
+            {Object.keys(INSTRUMENT_PREFABS).map(instrument => (
+              <button 
+                key={instrument}
+                className={`instrument-button ${currentInstrument === instrument ? 'active' : ''}`}
+                onClick={() => handleInstrumentChange(instrument)}
+                aria-pressed={currentInstrument === instrument}
+              >
+                {instrument.charAt(0).toUpperCase() + instrument.slice(1)}
+              </button>
+            ))}
+          </div>
+        </div>
+        
+        <div className="setting">
+          <label>Test Sound</label>
+          <button 
+            onClick={() => playNote('C4', '8n')}
+            className="test-button"
+            aria-label="Play test note"
+          >
+            Play Note
+          </button>
+          <button 
+            onClick={playTestMelody}
+            className="test-button"
+            aria-label="Play test melody"
+          >
+            Play Melody
+          </button>
         </div>
       </div>
       
@@ -1108,6 +1167,56 @@ const styles = `
   border-radius: 5px;
   font-size: 0.9em;
   z-index: 10;
+}
+
+/* Instrument selector in settings panel */
+.instrument-settings {
+  margin-top: 15px;
+}
+
+.instrument-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.instrument-button {
+  background: rgba(60, 60, 60, 0.8);
+  border: 1px solid #555;
+  border-radius: 4px;
+  color: white;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 8px 12px;
+  transition: all 0.2s ease;
+  flex: 1 0 calc(33% - 8px);
+  min-width: 80px;
+}
+
+.instrument-button:hover {
+  background: rgba(80, 80, 80, 0.8);
+}
+
+.instrument-button.active {
+  background: rgba(0, 150, 100, 0.8);
+  border-color: #4dffa7;
+}
+
+.test-button {
+  background: rgba(60, 60, 60, 0.8);
+  border: 1px solid #555;
+  border-radius: 4px;
+  color: white;
+  cursor: pointer;
+  margin-top: 8px;
+  margin-right: 8px;
+  padding: 8px 12px;
+  transition: all 0.2s ease;
+}
+
+.test-button:hover {
+  background: rgba(80, 80, 80, 0.8);
 }
 `;
 
