@@ -31,7 +31,8 @@ const MAJOR_SCALE_FREQUENCIES = {
 };
 
 // Array for easier access - C major scale (C, D, E, F, G, A, B)
-const MAJOR_SCALE_NOTES = [
+// Export this so it can be used by the KeyboardNotePicker component
+export const MAJOR_SCALE_NOTES = [
   'C4', 'D4', 'E4', 'F4', 'G4', 'A4', 'B4',
   'C5', 'D5', 'E5', 'F5', 'G5', 'A5', 'B5', 'C6'
 ];

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import * as Tone from 'tone';
 import { playNote } from '../utils/synthManager';
+import KeyboardNotePicker from './KeyboardNotePicker';
 
 // Sequencer step component for dispenser settings
 const SequencerStep = ({ active, onClick, stepNumber }) => {
@@ -56,14 +57,12 @@ export default function SettingsMenu({
   }, [selectedObject, selectedType]);
 
   // Handle beam parameter changes
-  const handlePitchChange = (e) => {
-    const newPitch = parseFloat(e.target.value);
+  const handlePitchChange = (newPitch) => {
     setPitch(newPitch);
     if (onUpdateBeam) {
       onUpdateBeam(selectedObject, { pitch: newPitch });
     }
-    // Play a preview note with the new pitch
-    playNote('C4', '16n', null, 0.2, newPitch);
+    // Note: No need to play a preview note here as KeyboardNotePicker already does that
   };
 
   const handleElasticityChange = (e) => {
@@ -137,18 +136,10 @@ export default function SettingsMenu({
         {selectedType === 'beam' && (
           <div className="beam-settings">
             <div className="setting-group">
-              <label htmlFor="pitch-slider">
-                Pitch: {(pitch * 2).toFixed(2)}
-              </label>
-              <input
-                id="pitch-slider"
-                type="range"
-                min="0.1"
-                max="2"
-                step="0.01"
-                value={pitch}
+              <label>Pitch</label>
+              <KeyboardNotePicker 
+                currentNote={pitch} 
                 onChange={handlePitchChange}
-                aria-label="Adjust beam pitch"
               />
             </div>
             

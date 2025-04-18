@@ -46,18 +46,16 @@ describe('Dispenser Functionality', () => {
       angularDamping: 0.01
     });
     
-    // Add initial velocity with randomness
+    // Add initial deterministic velocity
     sphereBody.velocity.set(
-      (Math.random() - 0.5) * 0.1,
-      -0.2 - Math.random() * 0.1,
-      (Math.random() - 0.5) * 0.1
+      0,            // No X velocity
+      -0.25,        // Fixed downward Y velocity
+      0             // No Z velocity
     );
     
-    // Add some random angular velocity
+    // No initial rotation
     sphereBody.angularVelocity.set(
-      (Math.random() - 0.5) * 1,
-      (Math.random() - 0.5) * 1,
-      (Math.random() - 0.5) * 1
+      0, 0, 0       // No rotation
     );
     
     world.addBody(sphereBody);
@@ -115,14 +113,14 @@ describe('Dispenser Functionality', () => {
     groundBody = null;
   });
 
-  it('should spawn balls with some horizontal randomness', () => {
+  it('should spawn balls with consistent positions', () => {
     // Create multiple balls from same dispenser position
     const numBalls = 10;
     for (let i = 0; i < numBalls; i++) {
       const ballPosition = new THREE.Vector3(
-        dispenserPosition.x + (Math.random() * 0.1 - 0.05),
+        dispenserPosition.x,
         dispenserPosition.y - 0.35,
-        dispenserPosition.z + (Math.random() * 0.1 - 0.05)
+        0
       );
       createBall(ballPosition);
     }
@@ -130,13 +128,52 @@ describe('Dispenser Functionality', () => {
     // Get ball positions
     const positions = getBallPositions(balls);
     
-    // Check that they're not all at the exact same x,z position
+    // Check that all balls have exactly the same x,z position
     const uniqueXPositions = new Set(positions.map(p => p.x.toFixed(6)));
     const uniqueZPositions = new Set(positions.map(p => p.z.toFixed(6)));
     
-    // Should have multiple unique positions (randomness is working)
-    expect(uniqueXPositions.size).toBeGreaterThan(1);
-    expect(uniqueZPositions.size).toBeGreaterThan(1);
+    // Should have exactly one unique position for each axis (all balls at same spot)
+    expect(uniqueXPositions.size).toBe(1);
+    expect(uniqueZPositions.size).toBe(1);
+  });
+  
+  it('should have balls fall straight down', () => {
+    // Create multiple balls at the same position
+    const numBalls = 5;
+    for (let i = 0; i < numBalls; i++) {
+      const ballPosition = new THREE.Vector3(
+        dispenserPosition.x,
+        dispenserPosition.y - 0.35,
+        0
+      );
+      createBall(ballPosition);
+    }
+    
+    // Record initial positions
+    const initialPositions = balls.map(ball => ({
+      x: ball.body.position.x,
+      y: ball.body.position.y,
+      z: ball.body.position.z
+    }));
+    
+    // Step world forward
+    for (let i = 0; i < 10; i++) {
+      world.step(1/60);
+    }
+    
+    // Get final positions
+    const finalPositions = balls.map(ball => ({
+      x: ball.body.position.x,
+      y: ball.body.position.y,
+      z: ball.body.position.z
+    }));
+    
+    // Each ball should maintain its exact X and Z position while only Y changes
+    for (let i = 0; i < balls.length; i++) {
+      expect(finalPositions[i].x).toBeCloseTo(initialPositions[i].x, 5);
+      expect(finalPositions[i].y).toBeLessThan(initialPositions[i].y); // Y should decrease
+      expect(finalPositions[i].z).toBeCloseTo(initialPositions[i].z, 5);
+    }
   });
   
   it('should have balls move apart as they fall', () => {
@@ -186,13 +223,13 @@ describe('Dispenser Functionality', () => {
     expect(finalAvgDistance).toBeGreaterThan(initialAvgDistance);
   });
   
-  it('should not create balls that perfectly stack', () => {
+  it('should create balls that stack perfectly', () => {
     // Create 10 balls with same X,Z but different Y
     for (let i = 0; i < 10; i++) {
       const ballPosition = new THREE.Vector3(
         dispenserPosition.x,
         dispenserPosition.y - 0.35 - (i * 0.25), // Stack on top of each other
-        dispenserPosition.z
+        0
       );
       createBall(ballPosition);
     }
@@ -214,23 +251,23 @@ describe('Dispenser Functionality', () => {
         const yDiff = Math.abs(positions[i].y - positions[j].y);
         
         // If balls are directly above each other (stacked)
-        if (xDiff < 0.05 && zDiff < 0.05 && yDiff < 0.25 && yDiff > 0.15) {
+        if (xDiff < 0.01 && zDiff < 0.01 && yDiff > 0.15 && yDiff < 0.25) {
           stackedCount++;
         }
       }
     }
     
-    // Should not have many perfectly stacked balls
-    expect(stackedCount).toBeLessThan(positions.length - 1);
+    // With deterministic physics, balls should stack perfectly
+    expect(stackedCount).toBeGreaterThan(0);
   });
   
-  it('should handle high ball spawn rate without physics issues', () => {
-    // Rapidly spawn 30 balls
+  it('should handle high ball spawn rate with deterministic physics', () => {
+    // Rapidly spawn 30 balls at exact same position
     for (let i = 0; i < 30; i++) {
       const ballPosition = new THREE.Vector3(
-        dispenserPosition.x + (Math.random() * 0.1 - 0.05),
+        dispenserPosition.x,
         dispenserPosition.y - 0.35,
-        dispenserPosition.z + (Math.random() * 0.1 - 0.05)
+        0
       );
       createBall(ballPosition);
       
@@ -258,6 +295,10 @@ describe('Dispenser Functionality', () => {
       
       // Balls shouldn't tunnel through the ground
       expect(ball.body.position.y + 0.1).toBeGreaterThan(groundBody.position.y);
+      
+      // With deterministic physics, balls should stay aligned vertically
+      expect(ball.body.position.x).toBeCloseTo(dispenserPosition.x, 2);
+      expect(ball.body.position.z).toBeCloseTo(0, 2);
     }
   });
 }); 
