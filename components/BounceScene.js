@@ -3,11 +3,10 @@ import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import * as Tone from 'tone';
 import { mapLengthToNote, getNoteColor, playNoteForLength } from '../utils/midiSequencer';
-import { playBounceSound, playNote } from '../utils/synthManager';
+import { playBounceSound, playNote, ensureToneInitialized } from '../utils/synthManager';
 import NoteDisplay from './NoteDisplay';
 import SelectionManager from '../utils/SelectionManager';
 import SettingsMenu from './SettingsMenu';
-import '../styles/SettingsMenu.css';
 
 export default function BounceScene() {
   const mountRef = useRef(null);
@@ -65,6 +64,11 @@ export default function BounceScene() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    
+    // Initialize Tone.js as early as possible
+    ensureToneInitialized().catch(err => {
+      console.warn("Failed to initialize Tone.js:", err);
+    });
     
     // Scene variables
     let scene, camera, renderer;
@@ -172,13 +176,13 @@ export default function BounceScene() {
     function initAudio() {
       // Use Tone.context instead of creating a new AudioContext
       // Ensure Tone.js is started
-      if (Tone.context.state !== 'running') {
-        Tone.start();
-      }
-      
-      // Use the playBounceSound from synthManager
-      window.playBounceSound = playBounceSound;
-      window.playNote = playNote;
+      ensureToneInitialized().then(() => {
+        // Expose functions to the window for access in other parts of the component
+        window.playBounceSound = playBounceSound;
+        window.playNote = playNote;
+      }).catch(err => {
+        console.warn("Failed to initialize audio:", err);
+      });
     }
     
     // Initialize Three.js scene
@@ -643,11 +647,20 @@ export default function BounceScene() {
       mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
       mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
       
-      // Initialize audio on first interaction
+      // Initialize audio on first interaction - must happen in response to user gesture
       if (!audioContext) {
         initAudio();
+        // Defer actions until audio is initialized
+        setTimeout(() => handleMouseClick(event), 100);
+        return;
       }
       
+      // If audio is already initialized, proceed with normal click handling
+      handleMouseClick(event);
+    }
+    
+    // Separate function to handle mouse click after audio is initialized
+    function handleMouseClick(event) {
       // Cast ray from mouse position into scene
       raycaster.setFromCamera(mouse, camera);
       
