@@ -115,20 +115,27 @@ export default function BounceScene() {
       scene = new THREE.Scene();
       scene.background = new THREE.Color(0x000011); // Very dark blue-black background
       
-      // Camera setup - positioned higher up for waterfall creation
-      camera = new THREE.PerspectiveCamera(
-        75,                                        // FOV
-        window.innerWidth / window.innerHeight,    // Aspect ratio
-        0.1,                                       // Near clipping plane
-        100                                        // Far clipping plane
+      // Camera setup - switched to orthographic for 2.5D view
+      const aspect = window.innerWidth / window.innerHeight;
+      const frustumSize = 20;
+      camera = new THREE.OrthographicCamera(
+        frustumSize * aspect / -2,
+        frustumSize * aspect / 2,
+        frustumSize / 2,
+        frustumSize / -2,
+        0.1,
+        1000
       );
-      // Position the camera higher up, looking down slightly
-      camera.position.set(0, 15, 12);             // Much higher Y position
-      camera.lookAt(0, 0, 0);                     // Look towards center/ground
       
-      // Drawing plane for mouse interaction - moved higher up
+      // Position for 2.5D view - slight angle for depth perception while keeping parallel lines
+      camera.position.set(10, 10, 10);  // Equal values create 45-degree angle
+      camera.lookAt(0, 0, 0);
+      
+      // Ensure up vector is correct for consistent orientation
+      camera.up.set(0, 1, 0);
+      
+      // Drawing plane for mouse interaction - aligned with view
       drawingPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
-      drawingPlane.translate(new THREE.Vector3(0, 10, 0)); // Move the drawing plane up
       
       // Renderer setup
       renderer = new THREE.WebGLRenderer({ 
@@ -152,6 +159,83 @@ export default function BounceScene() {
       glowPlane.position.y = -2;
       scene.add(glowPlane);
       
+      // Add visible boundary walls that match physics boundaries exactly
+      const wallMaterial = new THREE.MeshStandardMaterial({
+        color: 0x2a2a4a,
+        roughness: 0.8,
+        metalness: 0.2,
+        transparent: true,
+        opacity: 0.4,
+        side: THREE.DoubleSide,
+        depthWrite: false
+      });
+
+      // Helper function to create matching visual and physics walls
+      function createBoundaryPair(position, dimensions, rotation) {
+        // Visual wall
+        const wallGeometry = new THREE.BoxGeometry(dimensions.x * 2, dimensions.y * 2, dimensions.z * 2);
+        const wallMesh = new THREE.Mesh(wallGeometry, wallMaterial);
+        wallMesh.position.copy(position);
+        if (rotation) {
+          wallMesh.rotation.copy(rotation);
+        }
+        scene.add(wallMesh);
+
+        // Physics wall
+        const wallShape = new CANNON.Box(dimensions);
+        const wallBody = new CANNON.Body({
+          mass: 0,
+          position: new CANNON.Vec3(position.x, position.y, position.z),
+          shape: wallShape,
+          material: platformMaterial
+        });
+        if (rotation) {
+          const q = new CANNON.Quaternion();
+          q.setFromEuler(rotation.x, rotation.y, rotation.z);
+          wallBody.quaternion.copy(q);
+        }
+        wallBody.userData = { isBoundary: true };
+        world.addBody(wallBody);
+
+        return { mesh: wallMesh, body: wallBody };
+      }
+
+      // Create all boundary walls
+      // Left wall
+      createBoundaryPair(
+        new THREE.Vector3(-10, 0, 0),
+        new CANNON.Vec3(0.5, 20, 10),
+        new THREE.Euler(0, 0, Math.PI / 4)
+      );
+
+      // Right wall
+      createBoundaryPair(
+        new THREE.Vector3(10, 0, 0),
+        new CANNON.Vec3(0.5, 20, 10),
+        new THREE.Euler(0, 0, -Math.PI / 4)
+      );
+
+      // Top wall
+      createBoundaryPair(
+        new THREE.Vector3(0, 15, 0),
+        new CANNON.Vec3(10, 0.5, 10),
+        new THREE.Euler(0, 0, 0)
+      );
+
+      // Back wall
+      createBoundaryPair(
+        new THREE.Vector3(0, 0, -10),
+        new CANNON.Vec3(10, 20, 0.5),
+        new THREE.Euler(0, 0, 0)
+      );
+
+      // Front wall
+      createBoundaryPair(
+        new THREE.Vector3(0, 0, 10),
+        new CANNON.Vec3(10, 20, 0.5),
+        new THREE.Euler(0, 0, 0)
+      );
+
       // Lighting
       const ambientLight = new THREE.AmbientLight(0xffffff, 0.2); // Reduced ambient
       scene.add(ambientLight);
@@ -203,9 +287,23 @@ export default function BounceScene() {
         }
       );
       
+      // Create contact material for ball-ball interactions that makes them pass through each other
+      const ballBallContactMaterial = new CANNON.ContactMaterial(
+        ballMaterial,
+        ballMaterial,
+        {
+          friction: 0,
+          restitution: 0,
+          contactEquationStiffness: 0, // Zero stiffness means no collision response
+          contactEquationRelaxation: 0,
+          frictionEquationStiffness: 0
+        }
+      );
+      
       // Store in ref for access outside useEffect
       contactMaterialRef.current = ballPlatformContactMaterial;
       world.addContactMaterial(ballPlatformContactMaterial);
+      world.addContactMaterial(ballBallContactMaterial);
       
       // Special event listener for custom collision behavior
       world.addEventListener('postStep', () => {
@@ -220,51 +318,12 @@ export default function BounceScene() {
         }
       });
       
-      // Ground plane - moved much lower to allow for longer falls
-      const groundBody = new CANNON.Body({
-        type: CANNON.Body.STATIC,
-        shape: new CANNON.Plane(),
-        material: platformMaterial
-      });
-      groundBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
-      groundBody.position.y = -10; // Much lower ground position
-      world.addBody(groundBody);
-      
       // Create boundaries to keep balls from falling off edges - adjusted for new height
       createBoundary(-10, -10, 40, 1, 0, Math.PI / 4);     // Left wall
       createBoundary(10, -10, 40, 1, 0, -Math.PI / 4);     // Right wall
       createBoundary(-10, -10, 40, 0.5, 0, Math.PI / 2);   // Left boundary
       createBoundary(10, -10, 40, 0.5, 0, Math.PI / 2);    // Right boundary
       createBoundary(0, 15, 20, 0.5, Math.PI / 2, 0);      // Top boundary (ceiling)
-    }
-    
-    // Helper function to create boundary walls around the play area
-    function createBoundary(x, y, length, width, rotX, rotY) {
-      // Create invisible physics boundary
-      const boundaryShape = new CANNON.Box(new CANNON.Vec3(length/2, width/2, 1));
-      const boundaryBody = new CANNON.Body({
-        mass: 0, // Static body
-        position: new CANNON.Vec3(x, y, 0),
-        shape: boundaryShape,
-        material: platformMaterial
-      });
-      
-      // Rotate the boundary
-      const quat = new CANNON.Quaternion();
-      quat.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), rotX);
-      const quat2 = new CANNON.Quaternion();
-      quat2.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), rotY);
-      quat.mult(quat2, quat);
-      boundaryBody.quaternion.copy(quat);
-      
-      // Add boundary data
-      boundaryBody.userData = {
-        isBoundary: true,
-        restitution: 0.97 // High restitution for bouncy boundaries
-      };
-      
-      world.addBody(boundaryBody);
-      return boundaryBody;
     }
     
     // Create a dispenser at the specified position
@@ -353,12 +412,6 @@ export default function BounceScene() {
         angularDamping: 0.01 // Small angular damping too
       });
       
-      // Add initial downward velocity for predictable momentum
-      sphereBody.velocity.set(0, -0.2, 0); // Small initial velocity for golf ball
-      
-      // Add a custom userData property to identify this as a ball
-      sphereBody.userData = { isBall: true };
-      
       // Add collision handling
       sphereBody.addEventListener('collide', function(e) {
         // Get the body that was hit
@@ -388,28 +441,35 @@ export default function BounceScene() {
           if (soundEnabled) {
             const volume = Math.min(0.5, Math.abs(impactVelocity) / 10);
             if (targetBody.userData.length) {
-              // Play musical note based on wall length - passing null as first arg since midiSequencer handles context
               playNoteForLength(Tone.context, targetBody.userData.length, 0.5, volume);
             }
           }
-          
-        } else if (targetBody.userData && targetBody.userData.isGround) {
-          // Ground collision - mark for removal after a short delay
-          sphereBody.userData = sphereBody.userData || {};
-          // Set removal timestamp to 500ms in the future
-          sphereBody.userData.removeAfter = Date.now() + 500;
-          
-          // No sound for ground collisions
-          
         } else if (targetBody.userData && targetBody.userData.isBoundary) {
           // Boundary collision - no sound, just bounce
+          const contactNormal = e.contact.ni;
+          const impactVelocity = sphereBody.velocity.dot(contactNormal);
+          const restitution = 0.8; // Slightly less bouncy on boundaries
+          const bounce = -impactVelocity * (1 + restitution);
           
+          const impulse = new CANNON.Vec3(
+            contactNormal.x * bounce * mass,
+            contactNormal.y * bounce * mass,
+            contactNormal.z * bounce * mass
+          );
+          
+          sphereBody.applyImpulse(impulse, sphereBody.position);
         } else {
-          // Other collisions - no sound
-          // Energy loss on general collisions
+          // Other collisions - slight energy loss
           sphereBody.velocity.scale(0.99, sphereBody.velocity);
         }
       });
+      
+      // Add initial downward velocity and gravity effect
+      sphereBody.velocity.set(0, -2, 0); // Stronger initial drop
+      sphereBody.gravity = new CANNON.Vec3(0, -9.82, 0); // Ensure gravity is applied
+      
+      // Add a custom userData property to identify this as a ball
+      sphereBody.userData = { isBall: true };
       
       // Add the body to the world
       world.addBody(sphereBody);
@@ -621,7 +681,10 @@ export default function BounceScene() {
     
     // Handle window resize
     function onWindowResize() {
-      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.left = -frustumSize * aspect / 2;
+      camera.right = frustumSize * aspect / 2;
+      camera.top = frustumSize / 2;
+      camera.bottom = -frustumSize / 2;
       camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
     }
@@ -743,11 +806,11 @@ export default function BounceScene() {
           balls[i].mesh.position.copy(balls[i].body.position);
           balls[i].mesh.quaternion.copy(balls[i].body.quaternion);
           
-          // Remove balls that hit the ground or fall too far - adjusted threshold
-          if ((balls[i].body.userData && 
-               (balls[i].body.userData.shouldRemove || 
-                (balls[i].body.userData.removeAfter && Date.now() > balls[i].body.userData.removeAfter))) || 
-              balls[i].body.position.y < -15) { // Lower threshold for removal
+          // Remove balls that exit our play area bounds
+          if (balls[i].body.position.y < -20 || // Fallen too far
+              balls[i].body.position.y > 20 ||  // Gone too high
+              Math.abs(balls[i].body.position.x) > 15 || // Too far left/right
+              Math.abs(balls[i].body.position.z) > 15) { // Too far forward/back
             scene.remove(balls[i].mesh);
             world.removeBody(balls[i].body);
             balls.splice(i, 1);
@@ -757,8 +820,7 @@ export default function BounceScene() {
             setBallCount(balls.length);
           }
           
-          // If the ball has come nearly to rest, gradually apply more damping to settle it faster
-          // This prevents balls from jittering forever at rest
+          // If the ball has come nearly to rest, gradually apply more damping
           else if (balls[i].body.velocity.lengthSquared() < 0.05) {
             balls[i].body.linearDamping = Math.min(balls[i].body.linearDamping * 1.01, 0.95);
           }
