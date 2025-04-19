@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Bounce WebVR - An accessible musical physics playground">
+    <title>Bounce WebVR</title>
+    <!-- Preload critical assets -->
+    <link rel="preload" href="/js/main.js" as="script">
+    <link rel="preload" href="/js/style.css" as="style">
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+        }
+        canvas {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+        #note-display {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            font-family: Arial, sans-serif;
+            display: none;
+        }
+        #note-display.visible {
+            display: block;
+        }
+        #settings-button {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-family: Arial, sans-serif;
+        }
+        #settings-panel {
+            position: fixed;
+            top: 70px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 20px;
+            border-radius: 5px;
+            font-family: Arial, sans-serif;
+            display: none;
+        }
+        #settings-panel.visible {
+            display: block;
+        }
+        .settings-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        input[type="range"] {
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div id="note-display" role="status" aria-live="polite">
+        <span>Current Note: </span>
+        <strong id="current-note"></strong>
+    </div>
+    <button id="settings-button" aria-label="Toggle settings panel">⚙️ Settings</button>
+    <div id="settings-panel">
+        <div class="settings-group">
+            <label for="bounciness">Bounciness</label>
+            <input type="range" id="bounciness" min="0" max="1" step="0.1" value="0.7">
+        </div>
+        <div class="settings-group">
+            <label for="tempo">Tempo (BPM)</label>
+            <input type="range" id="tempo" min="60" max="200" step="1" value="120">
+        </div>
+        <div class="settings-group">
+            <label for="instrument">Instrument</label>
+            <select id="instrument">
+                <option value="marimba">Marimba</option>
+                <option value="piano">Piano</option>
+                <option value="synth">Synth</option>
+            </select>
+        </div>
+    </div>
+    <div id="app">
+        <!-- Vue app will mount here -->
+        <noscript>
+            <p>JavaScript is required to run this application. Please enable JavaScript to continue.</p>
+        </noscript>
+    </div>
+    <script type="module" src="/js/main.js"></script>
+</body>
+</html> 

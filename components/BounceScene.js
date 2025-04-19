@@ -36,6 +36,17 @@ export default function BounceScene() {
     return getCurrentInstrumentType() || 'marimba';
   });
   
+  const [isInitialized, setIsInitialized] = useState(false);
+  const [isPhysicsReady, setIsPhysicsReady] = useState(false);
+  const [isAudioReady, setIsAudioReady] = useState(false);
+  const initializationPromise = useRef(null);
+  const platformMaterialRef = useRef(null);
+  const materialsRef = useRef({
+    wall: null,
+    ball: null,
+    platform: null
+  });
+  
   // Effect to initialize Tone.js Transport with the current tempo
   useEffect(() => {
     if (Tone.Transport) {
@@ -82,85 +93,10 @@ export default function BounceScene() {
     let raycaster = new THREE.Raycaster(); // Raycaster for mouse interaction
     let drawingPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0); // Plane for mouse interaction
     
-    // Define physics materials inside the useEffect
-    const ballMaterial = new CANNON.Material("ballMaterial");
-    ballMaterial.friction = 0.3;
-    ballMaterial.restitution = 0.7; // Default ball restitution
-    
-    const platformMaterial = new CANNON.Material("platformMaterial");
-    platformMaterial.friction = 0.1; // Low friction for platforms
-    platformMaterial.restitution = 0.5; // Default platform restitution (will be controlled by slider)
-    
-    // Store in ref for access outside useEffect
-    platformMaterialRef.current = platformMaterial;
-    
-    // Keep track of the shared platform material contact properties
-    let ballPlatformContactMaterial;
-    
-    // Audio context for sound effects
-    function initAudio() {
-      // Use Tone.context instead of creating a new AudioContext
-      // Ensure Tone.js is started
-      if (Tone.context.state !== 'running') {
-        Tone.start();
-      }
-      
-      // Use the playBounceSound from synthManager
-      window.playBounceSound = playBounceSound;
-    }
-    
-    // Initialize Three.js scene
-    function initScene() {
-      // Scene setup
-      scene = new THREE.Scene();
-      scene.background = new THREE.Color(0x000011); // Very dark blue-black background
-      
-      // Camera setup - switched to orthographic for 2.5D view
-      const aspect = window.innerWidth / window.innerHeight;
-      const frustumSize = 20;
-      camera = new THREE.OrthographicCamera(
-        frustumSize * aspect / -2,
-        frustumSize * aspect / 2,
-        frustumSize / 2,
-        frustumSize / -2,
-        0.1,
-        1000
-      );
-      
-      // Position for 2.5D view - slight angle for depth perception while keeping parallel lines
-      camera.position.set(10, 10, 10);  // Equal values create 45-degree angle
-      camera.lookAt(0, 0, 0);
-      
-      // Ensure up vector is correct for consistent orientation
-      camera.up.set(0, 1, 0);
-      
-      // Drawing plane for mouse interaction - aligned with view
-      drawingPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
-      
-      // Renderer setup
-      renderer = new THREE.WebGLRenderer({ 
-        antialias: true,
-        alpha: true 
-      });
-      renderer.setSize(window.innerWidth, window.innerHeight);
-      renderer.shadowMap.enabled = true;
-      mountRef.current.appendChild(renderer.domElement);
-      
-      // Add subtle glow plane that matches our physics plane
-      const glowGeometry = new THREE.PlaneGeometry(100, 100); // Much larger than physics plane
-      const glowMaterial = new THREE.MeshBasicMaterial({
-        color: 0x1a1a4a,
-        transparent: true,
-        opacity: 0.2,
-        side: THREE.DoubleSide
-      });
-      const glowPlane = new THREE.Mesh(glowGeometry, glowMaterial);
-      glowPlane.rotation.x = -Math.PI / 2;
-      glowPlane.position.y = -2;
-      scene.add(glowPlane);
-      
-      // Add visible boundary walls that match physics boundaries exactly
-      const wallMaterial = new THREE.MeshStandardMaterial({
+    // Initialize materials
+    function initMaterials() {
+      // Visual materials
+      materialsRef.current.wall = new THREE.MeshStandardMaterial({
         color: 0x2a2a4a,
         roughness: 0.8,
         metalness: 0.2,
@@ -170,160 +106,194 @@ export default function BounceScene() {
         depthWrite: false
       });
 
-      // Helper function to create matching visual and physics walls
-      function createBoundaryPair(position, dimensions, rotation) {
-        // Visual wall
-        const wallGeometry = new THREE.BoxGeometry(dimensions.x * 2, dimensions.y * 2, dimensions.z * 2);
-        const wallMesh = new THREE.Mesh(wallGeometry, wallMaterial);
-        wallMesh.position.copy(position);
-        if (rotation) {
-          wallMesh.rotation.copy(rotation);
-        }
-        scene.add(wallMesh);
+      // Physics materials
+      materialsRef.current.ball = new CANNON.Material("ballMaterial");
+      materialsRef.current.ball.friction = 0.3;
+      materialsRef.current.ball.restitution = 0.7;
 
-        // Physics wall
-        const wallShape = new CANNON.Box(dimensions);
-        const wallBody = new CANNON.Body({
-          mass: 0,
-          position: new CANNON.Vec3(position.x, position.y, position.z),
-          shape: wallShape,
-          material: platformMaterial
-        });
-        if (rotation) {
-          const q = new CANNON.Quaternion();
-          q.setFromEuler(rotation.x, rotation.y, rotation.z);
-          wallBody.quaternion.copy(q);
+      materialsRef.current.platform = new CANNON.Material("platformMaterial");
+      materialsRef.current.platform.friction = 0.1;
+      materialsRef.current.platform.restitution = 0.5;
+      
+      // Store in ref for access outside useEffect
+      platformMaterialRef.current = materialsRef.current.platform;
+      
+      // Create contact material for ball-platform interactions
+      const ballPlatformContactMaterial = new CANNON.ContactMaterial(
+        materialsRef.current.ball,
+        materialsRef.current.platform,
+        {
+          friction: 0.1,
+          restitution: 0.97,
+          contactEquationRelaxation: 3,
+          frictionEquationStiffness: 1e7,
+          contactEquationStiffness: 1e8
         }
-        wallBody.userData = { isBoundary: true };
-        world.addBody(wallBody);
+      );
+      
+      return ballPlatformContactMaterial;
+    }
 
-        return { mesh: wallMesh, body: wallBody };
+    // Create initialization promise
+    initializationPromise.current = new Promise(async (resolve) => {
+      try {
+        // Initialize materials first
+        const ballPlatformContactMaterial = initMaterials();
+        
+        // Initialize scene
+        await initScene();
+        
+        // Initialize physics
+        await initPhysics(ballPlatformContactMaterial);
+        setIsPhysicsReady(true);
+        
+        // Initialize audio
+        await initAudio();
+        setIsAudioReady(true);
+        
+        // Create boundaries after both scene and physics are ready
+        createBoundaries();
+        
+        setIsInitialized(true);
+        resolve();
+      } catch (error) {
+        console.error('Initialization error:', error);
       }
-
-      // Create all boundary walls
-      // Left wall
-      createBoundaryPair(
-        new THREE.Vector3(-10, 0, 0),
-        new CANNON.Vec3(0.5, 20, 10),
-        new THREE.Euler(0, 0, Math.PI / 4)
-      );
-
-      // Right wall
-      createBoundaryPair(
-        new THREE.Vector3(10, 0, 0),
-        new CANNON.Vec3(0.5, 20, 10),
-        new THREE.Euler(0, 0, -Math.PI / 4)
-      );
-
-      // Top wall
-      createBoundaryPair(
-        new THREE.Vector3(0, 15, 0),
-        new CANNON.Vec3(10, 0.5, 10),
-        new THREE.Euler(0, 0, 0)
-      );
-
-      // Back wall
-      createBoundaryPair(
-        new THREE.Vector3(0, 0, -10),
-        new CANNON.Vec3(10, 20, 0.5),
-        new THREE.Euler(0, 0, 0)
-      );
-
-      // Front wall
-      createBoundaryPair(
-        new THREE.Vector3(0, 0, 10),
-        new CANNON.Vec3(10, 20, 0.5),
-        new THREE.Euler(0, 0, 0)
-      );
-
-      // Lighting
-      const ambientLight = new THREE.AmbientLight(0xffffff, 0.2); // Reduced ambient
-      scene.add(ambientLight);
-      
-      const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
-      directionalLight.position.set(10, 20, 15);
-      directionalLight.castShadow = true;
-      directionalLight.shadow.mapSize.width = 2048;
-      directionalLight.shadow.mapSize.height = 2048;
-      scene.add(directionalLight);
-      
-      // Add point light near camera for better visibility
-      const pointLight = new THREE.PointLight(0xffffff, 0.5, 50);
-      pointLight.position.copy(camera.position);
-      scene.add(pointLight);
+    });
+    
+    // Initialize Three.js scene
+    async function initScene() {
+      return new Promise((resolve) => {
+        // Scene setup
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x000011); // Very dark blue-black background
+        
+        // Camera setup - switched to orthographic for 2.5D view
+        const aspect = window.innerWidth / window.innerHeight;
+        const frustumSize = 20;
+        camera = new THREE.OrthographicCamera(
+          frustumSize * aspect / -2,
+          frustumSize * aspect / 2,
+          frustumSize / 2,
+          frustumSize / -2,
+          0.1,
+          1000
+        );
+        
+        // Position for 2.5D view - slight angle for depth perception while keeping parallel lines
+        camera.position.set(10, 10, 10);  // Equal values create 45-degree angle
+        camera.lookAt(0, 0, 0);
+        
+        // Ensure up vector is correct for consistent orientation
+        camera.up.set(0, 1, 0);
+        
+        // Drawing plane for mouse interaction - aligned with view
+        drawingPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+        
+        // Renderer setup
+        renderer = new THREE.WebGLRenderer({ 
+          antialias: true,
+          alpha: true 
+        });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        mountRef.current.appendChild(renderer.domElement);
+        
+        // Add subtle glow plane that matches our physics plane
+        const glowGeometry = new THREE.PlaneGeometry(100, 100); // Much larger than physics plane
+        const glowMaterial = new THREE.MeshBasicMaterial({
+          color: 0x1a1a4a,
+          transparent: true,
+          opacity: 0.2,
+          side: THREE.DoubleSide
+        });
+        const glowPlane = new THREE.Mesh(glowGeometry, glowMaterial);
+        glowPlane.rotation.x = -Math.PI / 2;
+        glowPlane.position.y = -2;
+        scene.add(glowPlane);
+        
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.2); // Reduced ambient
+        scene.add(ambientLight);
+        
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
+        directionalLight.position.set(10, 20, 15);
+        directionalLight.castShadow = true;
+        directionalLight.shadow.mapSize.width = 2048;
+        directionalLight.shadow.mapSize.height = 2048;
+        scene.add(directionalLight);
+        
+        // Add point light near camera for better visibility
+        const pointLight = new THREE.PointLight(0xffffff, 0.5, 50);
+        pointLight.position.copy(camera.position);
+        scene.add(pointLight);
+        
+        resolve();
+      });
     }
     
     // Initialize physics world
-    function initPhysics() {
-      world = new CANNON.World({
-        gravity: new CANNON.Vec3(0, -9.82, 0) // Earth gravity
-      });
-      
-      // Improve solver to handle physics more accurately
-      world.solver.iterations = 10; // Default is 10, increase for more accuracy
-      world.solver.tolerance = 0.001; // Default is 0.001, lower for better accuracy
+    async function initPhysics(ballPlatformContactMaterial) {
+      return new Promise((resolve) => {
+        world = new CANNON.World({
+          gravity: new CANNON.Vec3(0, -9.82, 0) // Earth gravity
+        });
+        
+        // Improve solver to handle physics more accurately
+        world.solver.iterations = 10; // Default is 10, increase for more accuracy
+        world.solver.tolerance = 0.001; // Default is 0.001, lower for better accuracy
 
-      // Define default collision behavior
-      world.defaultContactMaterial.contactEquationStiffness = 1e7; // Stiffer contacts for trampoline effect
-      world.defaultContactMaterial.contactEquationRelaxation = 4; // More relaxation for stability
-      
-      // Create special materials for trampoline-like behavior
-      ballMaterial.friction = 0.2; // Low friction for golf ball
-      ballMaterial.restitution = 0.8; // Higher restitution for golf ball
-      
-      platformMaterial.friction = 0.3; // Medium friction for platforms
-      platformMaterial.restitution = 0.9; // High restitution for trampoline effect
+        // Define default collision behavior
+        world.defaultContactMaterial.contactEquationStiffness = 1e7; // Stiffer contacts for trampoline effect
+        world.defaultContactMaterial.contactEquationRelaxation = 4; // More relaxation for stability
+        
+        // Create special materials for trampoline-like behavior
+        materialsRef.current.ball.friction = 0.2; // Low friction for golf ball
+        materialsRef.current.ball.restitution = 0.8; // Higher restitution for golf ball
+        
+        materialsRef.current.platform.friction = 0.3; // Medium friction for platforms
+        materialsRef.current.platform.restitution = 0.9; // High restitution for trampoline effect
 
-      // Create contact material for ball-wall interactions
-      ballPlatformContactMaterial = new CANNON.ContactMaterial(
-        ballMaterial,
-        platformMaterial,
-        {
-          friction: 0.1, // Low friction for clean bounces
-          restitution: 0.97, // Very bouncy for golf ball effect
-          contactEquationRelaxation: 3, // Softer contacts
-          frictionEquationStiffness: 1e7, // Stiffer friction
-          contactEquationStiffness: 1e8 // Very stiff contacts for immediate response
-        }
-      );
-      
-      // Create contact material for ball-ball interactions that makes them pass through each other
-      const ballBallContactMaterial = new CANNON.ContactMaterial(
-        ballMaterial,
-        ballMaterial,
-        {
-          friction: 0,
-          restitution: 0,
-          contactEquationStiffness: 0, // Zero stiffness means no collision response
-          contactEquationRelaxation: 0,
-          frictionEquationStiffness: 0
-        }
-      );
-      
-      // Store in ref for access outside useEffect
-      contactMaterialRef.current = ballPlatformContactMaterial;
-      world.addContactMaterial(ballPlatformContactMaterial);
-      world.addContactMaterial(ballBallContactMaterial);
-      
-      // Special event listener for custom collision behavior
-      world.addEventListener('postStep', () => {
-        // Custom handling of ball-wall collisions to simulate perfect trampolines
-        // This prevents energy gain which can happen in physics engines
-        for (let i = 0; i < balls.length; i++) {
-          const ball = balls[i];
-          if (ball && ball.body) {
-            // Apply a constant small damping to simulate minimal air resistance
-            ball.body.velocity.scale(0.999, ball.body.velocity); // Even less damping for golf ball
+        // Store in ref for access outside useEffect
+        contactMaterialRef.current = ballPlatformContactMaterial;
+        world.addContactMaterial(ballPlatformContactMaterial);
+        
+        // Special event listener for custom collision behavior
+        world.addEventListener('postStep', () => {
+          // Custom handling of ball-wall collisions to simulate perfect trampolines
+          // This prevents energy gain which can happen in physics engines
+          for (let i = 0; i < balls.length; i++) {
+            const ball = balls[i];
+            if (ball && ball.body) {
+              // Apply a constant small damping to simulate minimal air resistance
+              ball.body.velocity.scale(0.999, ball.body.velocity); // Even less damping for golf ball
+            }
           }
+        });
+        
+        // Create boundaries to keep balls from falling off edges - adjusted for new height
+        createBoundary(-10, -10, 40, 1, 0, Math.PI / 4);     // Left wall
+        createBoundary(10, -10, 40, 1, 0, -Math.PI / 4);     // Right wall
+        createBoundary(-10, -10, 40, 0.5, 0, Math.PI / 2);   // Left boundary
+        createBoundary(10, -10, 40, 0.5, 0, Math.PI / 2);    // Right boundary
+        createBoundary(0, 15, 20, 0.5, Math.PI / 2, 0);      // Top boundary (ceiling)
+        
+        resolve();
+      });
+    }
+    
+    // Initialize audio
+    async function initAudio() {
+      return new Promise(async (resolve) => {
+        try {
+          await Tone.start();
+          audioContext = Tone.context;
+          resolve();
+        } catch (error) {
+          console.error('Audio initialization error:', error);
+          resolve(); // Resolve anyway to not block the app
         }
       });
-      
-      // Create boundaries to keep balls from falling off edges - adjusted for new height
-      createBoundary(-10, -10, 40, 1, 0, Math.PI / 4);     // Left wall
-      createBoundary(10, -10, 40, 1, 0, -Math.PI / 4);     // Right wall
-      createBoundary(-10, -10, 40, 0.5, 0, Math.PI / 2);   // Left boundary
-      createBoundary(10, -10, 40, 0.5, 0, Math.PI / 2);    // Right boundary
-      createBoundary(0, 15, 20, 0.5, Math.PI / 2, 0);      // Top boundary (ceiling)
     }
     
     // Create a dispenser at the specified position
@@ -407,7 +377,7 @@ export default function BounceScene() {
         mass: mass,
         shape: sphereShape,
         position: new CANNON.Vec3(position.x, position.y, position.z),
-        material: ballMaterial,
+        material: materialsRef.current.ball,
         linearDamping: 0.01, // Small damping for realistic physics
         angularDamping: 0.01 // Small angular damping too
       });
@@ -501,7 +471,19 @@ export default function BounceScene() {
     }
     
     // Create a wall between two points
-    function createWall(start, end) {
+    async function createWall(start, end) {
+      if (!isInitialized) {
+        await initializationPromise.current;
+      }
+      
+      if (!world) {
+        throw new Error('Physics world not ready');
+      }
+      
+      if (!audioContext && soundEnabled) {
+        console.warn('Audio context not ready, wall created without sound');
+      }
+      
       // Calculate wall properties
       const direction = new THREE.Vector3().subVectors(end, start);
       const length = direction.length();
@@ -528,7 +510,7 @@ export default function BounceScene() {
         mass: 0, // Static body
         position: new CANNON.Vec3(center.x, center.y, center.z),
         shape: wallShape,
-        material: platformMaterial, // Assign platform material
+        material: materialsRef.current.platform, // Assign platform material
         // Add custom properties for trampoline-like behavior
         fixedRotation: true // Prevent rotation for stability
       });
@@ -730,29 +712,29 @@ export default function BounceScene() {
       // Update ball material properties based on selection
       switch (materialType) {
         case 'golf':
-          ballMaterial.friction = 0.2;
-          ballMaterial.restitution = 0.8;
+          materialsRef.current.ball.friction = 0.2;
+          materialsRef.current.ball.restitution = 0.8;
           break;
         case 'rubber':
-          ballMaterial.friction = 0.7;
-          ballMaterial.restitution = 0.9;
+          materialsRef.current.ball.friction = 0.7;
+          materialsRef.current.ball.restitution = 0.9;
           break;
         case 'steel':
-          ballMaterial.friction = 0.1;
-          ballMaterial.restitution = 0.6;
+          materialsRef.current.ball.friction = 0.1;
+          materialsRef.current.ball.restitution = 0.6;
           break;
         case 'wood':
-          ballMaterial.friction = 0.5;
-          ballMaterial.restitution = 0.4;
+          materialsRef.current.ball.friction = 0.5;
+          materialsRef.current.ball.restitution = 0.4;
           break;
         default:
-          ballMaterial.friction = 0.2;
-          ballMaterial.restitution = 0.8;
+          materialsRef.current.ball.friction = 0.2;
+          materialsRef.current.ball.restitution = 0.8;
       }
       
       // Update contact material
       if (contactMaterialRef.current) {
-        contactMaterialRef.current.restitution = ballMaterial.restitution;
+        contactMaterialRef.current.restitution = materialsRef.current.ball.restitution;
       }
       
       // No sound feedback when material changes
@@ -832,7 +814,77 @@ export default function BounceScene() {
     
     // Setup the scene
     initScene();
-    initPhysics();
+    initPhysics(initMaterials());
+    
+    // Create boundary walls after both scene and physics are initialized
+    function createBoundaryPair(position, dimensions, rotation) {
+      if (!materialsRef.current.wall || !materialsRef.current.platform) {
+        throw new Error('Materials not initialized');
+      }
+      
+      // Visual wall
+      const wallGeometry = new THREE.BoxGeometry(dimensions.x * 2, dimensions.y * 2, dimensions.z * 2);
+      const wallMesh = new THREE.Mesh(wallGeometry, materialsRef.current.wall);
+      wallMesh.position.copy(position);
+      if (rotation) {
+        wallMesh.rotation.copy(rotation);
+      }
+      scene.add(wallMesh);
+
+      // Physics wall
+      const wallShape = new CANNON.Box(dimensions);
+      const wallBody = new CANNON.Body({
+        mass: 0,
+        position: new CANNON.Vec3(position.x, position.y, position.z),
+        shape: wallShape,
+        material: materialsRef.current.platform
+      });
+      if (rotation) {
+        const q = new CANNON.Quaternion();
+        q.setFromEuler(rotation.x, rotation.y, rotation.z);
+        wallBody.quaternion.copy(q);
+      }
+      wallBody.userData = { isBoundary: true };
+      world.addBody(wallBody);
+
+      return { mesh: wallMesh, body: wallBody };
+    }
+
+    // Create all boundary walls
+    // Left wall
+    createBoundaryPair(
+      new THREE.Vector3(-10, 0, 0),
+      new CANNON.Vec3(0.5, 20, 10),
+      new THREE.Euler(0, 0, Math.PI / 4)
+    );
+
+    // Right wall
+    createBoundaryPair(
+      new THREE.Vector3(10, 0, 0),
+      new CANNON.Vec3(0.5, 20, 10),
+      new THREE.Euler(0, 0, -Math.PI / 4)
+    );
+
+    // Top wall
+    createBoundaryPair(
+      new THREE.Vector3(0, 15, 0),
+      new CANNON.Vec3(10, 0.5, 10),
+      new THREE.Euler(0, 0, 0)
+    );
+
+    // Back wall
+    createBoundaryPair(
+      new THREE.Vector3(0, 0, -10),
+      new CANNON.Vec3(10, 20, 0.5),
+      new THREE.Euler(0, 0, 0)
+    );
+
+    // Front wall
+    createBoundaryPair(
+      new THREE.Vector3(0, 0, 10),
+      new CANNON.Vec3(10, 20, 0.5),
+      new THREE.Euler(0, 0, 0)
+    );
     
     // Add event listeners
     window.addEventListener('mousedown', onMouseDown);
