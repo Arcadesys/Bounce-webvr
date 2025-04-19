@@ -56,8 +56,8 @@ ${errorDetails.error ? errorDetails.error.stack : 'No stack trace available'}`;
     </script>
     
     <!-- Load critical resources with proper attributes -->
-    <script type="module" src="./main.js"></script>
-    <link rel="stylesheet" href="./styles/style.css">
+    <script type="module" src="/main.js"></script>
+    <link rel="stylesheet" href="/styles/style.css">
     
     <style>
         /* Inline critical styles */
@@ -69,11 +69,16 @@ ${errorDetails.error ? errorDetails.error.stack : 'No stack trace available'}`;
         #app {
             width: 100vw;
             height: 100vh;
+            position: relative;
         }
-        canvas {
+        #bounceCanvas {
             width: 100vw;
             height: 100vh;
             display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
         }
         #note-display {
             position: fixed;
@@ -86,6 +91,7 @@ ${errorDetails.error ? errorDetails.error.stack : 'No stack trace available'}`;
             border-radius: 5px;
             font-family: Arial, sans-serif;
             display: none;
+            z-index: 2;
         }
         #note-display.visible {
             display: block;
@@ -101,6 +107,7 @@ ${errorDetails.error ? errorDetails.error.stack : 'No stack trace available'}`;
             border-radius: 5px;
             cursor: pointer;
             font-family: Arial, sans-serif;
+            z-index: 2;
         }
         #settings-panel {
             position: fixed;
@@ -112,6 +119,7 @@ ${errorDetails.error ? errorDetails.error.stack : 'No stack trace available'}`;
             border-radius: 5px;
             font-family: Arial, sans-serif;
             display: none;
+            z-index: 2;
         }
         #settings-panel.visible {
             display: block;
@@ -153,6 +161,16 @@ ${errorDetails.error ? errorDetails.error.stack : 'No stack trace available'}`;
     <!-- Add console output for debugging -->
     <script>
         console.log('HTML loaded, waiting for main.js...');
+        // Add debug outline to canvas
+        window.addEventListener('load', () => {
+            const canvas = document.getElementById('bounceCanvas');
+            if (canvas) {
+                console.log('Canvas found:', canvas);
+                canvas.style.border = '2px solid red'; // Debug outline
+            } else {
+                console.error('Canvas not found!');
+            }
+        });
     </script>
 </body>
 </html> 

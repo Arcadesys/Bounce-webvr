@@ -1,4 +1,5 @@
 import * as CANNON from 'cannon-es';
+import * as Tone from 'tone';
 import { initVoicePool, playNoteForBeam, assignBeamToVoice } from '../utils/voiceManager';
 
 // Event emitter for collision events
@@ -15,6 +16,9 @@ const collisionEvents = {
 
 // Map to store beam IDs
 const beamIds = new Map();
+
+// Track last collision time for each body
+const lastCollisionTimes = new Map();
 
 /**
  * Creates a physics world with default gravity
@@ -53,22 +57,32 @@ export function createPhysicsWorld() {
     const relativeVelocity = event.contact.getImpactVelocityAlongNormal();
     const intensity = Math.min(Math.abs(relativeVelocity) / 10, 1);
     
-    // Simple pentatonic scale for pleasant sounds
-    const pentatonicScale = ['C4', 'E4', 'G4', 'A4', 'C5'];
-    const noteIndex = Math.floor(intensity * (pentatonicScale.length - 1));
-    const note = pentatonicScale[noteIndex];
+    // Check if enough time has passed since last collision
+    const now = Tone.now();
+    const lastCollision = lastCollisionTimes.get(beamId) || 0;
+    const minTimeBetweenCollisions = Tone.Time('32n').toSeconds();
     
-    // Play the collision sound for this specific beam
-    playNoteForBeam(beamId, note, '16n', intensity);
-    
-    // Emit collision event with data
-    collisionEvents.emit({
-      bodyA: event.body,
-      bodyB: event.contact.bi === event.body ? event.contact.bj : event.contact.bi,
-      beamId,
-      intensity,
-      note
-    });
+    if (now - lastCollision >= minTimeBetweenCollisions) {
+      // Simple pentatonic scale for pleasant sounds
+      const pentatonicScale = ['C4', 'E4', 'G4', 'A4', 'C5'];
+      const noteIndex = Math.floor(intensity * (pentatonicScale.length - 1));
+      const note = pentatonicScale[noteIndex];
+      
+      // Play the collision sound for this specific beam
+      playNoteForBeam(beamId, note, '16n', intensity);
+      
+      // Update last collision time
+      lastCollisionTimes.set(beamId, now);
+      
+      // Emit collision event with data
+      collisionEvents.emit({
+        bodyA: event.body,
+        bodyB: event.contact.bi === event.body ? event.contact.bj : event.contact.bi,
+        beamId,
+        intensity,
+        note
+      });
+    }
   });
 
   console.log('Physics: Creating walls');
@@ -268,19 +282,29 @@ function handleDefaultCollision(event) {
   const relativeVelocity = event.contact.getImpactVelocityAlongNormal();
   const intensity = Math.min(Math.abs(relativeVelocity) / 10, 1);
   
-  // Use a default note for non-beam collisions
-  const note = 'C4';
+  // Check if enough time has passed since last collision
+  const now = Tone.now();
+  const lastCollision = lastCollisionTimes.get('default') || 0;
+  const minTimeBetweenCollisions = Tone.Time('32n').toSeconds();
   
-  // Play a simple bounce sound
-  playNoteForBeam('default', note, '16n', intensity * 0.5);
-  
-  // Emit collision event
-  collisionEvents.emit({
-    bodyA: event.body,
-    bodyB: event.contact.bi === event.body ? event.contact.bj : event.contact.bi,
-    intensity,
-    note
-  });
+  if (now - lastCollision >= minTimeBetweenCollisions) {
+    // Use a default note for non-beam collisions
+    const note = 'C4';
+    
+    // Play a simple bounce sound
+    playNoteForBeam('default', note, '16n', intensity * 0.5);
+    
+    // Update last collision time
+    lastCollisionTimes.set('default', now);
+    
+    // Emit collision event
+    collisionEvents.emit({
+      bodyA: event.body,
+      bodyB: event.contact.bi === event.body ? event.contact.bj : event.contact.bi,
+      intensity,
+      note
+    });
+  }
 }
 
 /**

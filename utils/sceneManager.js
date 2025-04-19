@@ -2,6 +2,10 @@ import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import * as Tone from 'tone';
 import { registerBeam, unregisterBeam } from '../src/physics';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 
 export class SceneManager {
   constructor(canvas) {
@@ -22,48 +26,44 @@ export class SceneManager {
     this.initPhysics();
     this.addVisualHelpers();
     this.setupEventListeners();
+    this.setupPostProcessing();
     
     // Start animation loop
     this.animate();
   }
 
   initScene() {
-    // Scene setup
-    this.scene.background = new THREE.Color(0x000011);
-    
-    // Camera setup - adjusted for better viewing angle
-    const aspect = window.innerWidth / window.innerHeight;
-    const frustumSize = 20;
-    this.camera = new THREE.OrthographicCamera(
-      frustumSize * aspect / -2,
-      frustumSize * aspect / 2,
-      frustumSize / 2,
-      frustumSize / -2,
-      0.1,
-      1000
-    );
-    // Position camera for better view of the scene
-    this.camera.position.set(5, 15, 20);
+    this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    this.camera.position.set(0, 5, 10);
     this.camera.lookAt(0, 0, 0);
 
-    // Renderer setup
-    this.renderer = new THREE.WebGLRenderer({ 
-      canvas: this.canvas,
-      antialias: true 
-    });
+    this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.0;
+    this.renderer.outputEncoding = THREE.sRGBEncoding;
 
-    // Lighting
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+    // Load environment map
+    const pmremGenerator = new THREE.PMREMGenerator(this.renderer);
+    pmremGenerator.compileEquirectangularShader();
+    
+    new THREE.TextureLoader().load('https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/equirectangular/royal_esplanade_1k.hdr', (texture) => {
+      const envMap = pmremGenerator.fromEquirectangular(texture).texture;
+      this.scene.environment = envMap;
+      texture.dispose();
+      pmremGenerator.dispose();
+    });
+
+    // Add ambient light
+    const ambientLight = new THREE.AmbientLight(0x404040, 1);
     this.scene.add(ambientLight);
 
+    // Add directional light
     const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-    directionalLight.position.set(5, 15, 10);
+    directionalLight.position.set(5, 5, 5);
     directionalLight.castShadow = true;
-    directionalLight.shadow.mapSize.width = 1024;
-    directionalLight.shadow.mapSize.height = 1024;
     this.scene.add(directionalLight);
   }
 
@@ -87,10 +87,15 @@ export class SceneManager {
 
     // Create ground visual
     const groundGeometry = new THREE.PlaneGeometry(30, 30);
-    const groundMaterial = new THREE.MeshStandardMaterial({ 
-      color: 0x333333,
-      roughness: 0.8,
-      metalness: 0.2
+    const groundMaterial = new THREE.MeshPhysicalMaterial({ 
+      color: 0xffffff,
+      roughness: 0.1,
+      metalness: 0.1,
+      transmission: 0.9,
+      thickness: 0.5,
+      envMapIntensity: 1.0,
+      clearcoat: 1.0,
+      clearcoatRoughness: 0.1
     });
     const groundMesh = new THREE.Mesh(groundGeometry, groundMaterial);
     groundMesh.rotation.x = -Math.PI / 2;
@@ -262,6 +267,51 @@ export class SceneManager {
     console.log('Creating dispenser at', position);
   }
 
+  setupPostProcessing() {
+    this.composer = new THREE.EffectComposer(this.renderer);
+    
+    // Add render pass
+    const renderPass = new THREE.RenderPass(this.scene, this.camera);
+    this.composer.addPass(renderPass);
+    
+    // Add bloom pass for glow effect
+    const bloomPass = new THREE.UnrealBloomPass(
+      new THREE.Vector2(window.innerWidth, window.innerHeight),
+      1.5,  // strength
+      0.4,  // radius
+      0.85  // threshold
+    );
+    this.composer.addPass(bloomPass);
+    
+    // Add chromatic aberration for glass-like effect
+    const chromaticAberrationPass = new THREE.ShaderPass({
+      uniforms: {
+        tDiffuse: { value: null },
+        amount: { value: 0.003 }
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform sampler2D tDiffuse;
+        uniform float amount;
+        varying vec2 vUv;
+        void main() {
+          vec2 offset = amount * vec2(cos(vUv.y * 3.14159), sin(vUv.x * 3.14159));
+          vec4 cr = texture2D(tDiffuse, vUv + offset);
+          vec4 cg = texture2D(tDiffuse, vUv);
+          vec4 cb = texture2D(tDiffuse, vUv - offset);
+          gl_FragColor = vec4(cr.r, cg.g, cb.b, cg.a);
+        }
+      `
+    });
+    this.composer.addPass(chromaticAberrationPass);
+  }
+
   animate = () => {
     requestAnimationFrame(this.animate);
 
@@ -282,7 +332,8 @@ export class SceneManager {
       return true;
     });
 
-    this.renderer.render(this.scene, this.camera);
+    // Use composer instead of renderer
+    this.composer.render();
   }
 
   dispose() {

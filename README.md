@@ -1,48 +1,70 @@
-# Bounce - Interactive Ball Physics
+# Bounce WebVR
 
-A 3D bouncing ball physics generator with optional VR support, inspired by old-school bouncing ball MIDI generators.
+A musical physics playground built with Three.js and Web Audio API. Create musical walls, drop bouncing balls, and make music through physics!
+
+## Overview
+
+Bounce WebVR is a pure Three.js application that combines 3D physics with musical synthesis. Each wall you create has a musical note associated with its length, and balls create music as they bounce off these walls.
 
 ## Features
 
-- Drop balls by clicking anywhere on the screen
-- Create walls by holding Shift and dragging from one point to another
-- Watch balls bounce with realistic physics and collision detection
-- Audio feedback for bounce events (can be toggled on/off)
-- Accessible design with audio cues
-- Mobile support (touch to drop balls)
-
-## Tech Stack
-
-- Next.js for the application framework
-- Three.js for 3D rendering
-- Cannon.js for physics simulation
+- Real-time 3D physics using Cannon.js
+- Musical synthesis using Tone.js
+- Cyberpunk-inspired neon visuals
+- Accessible design with audio feedback
 
 ## Controls
 
-- **Click** to drop a ball
-- **Shift + Click + Drag** to create a wall
-- Click the 🔊 button to toggle sound on/off
+- **Left Click**: Drop a ball
+- **Shift + Drag**: Draw a musical wall (length determines pitch)
+- **Right Click** or **Cmd/Ctrl + Click**: Create a ball dispenser (coming soon)
+
+## Technical Stack
+
+- Three.js for 3D graphics
+- Cannon.js for physics
+- Tone.js for audio synthesis
+- Vanilla JavaScript (no framework dependencies)
 
 ## Development
 
+1. Clone the repository:
 ```bash
-# Install dependencies
-npm install
-
-# Run development server
-npm run dev
-
-# Build for production
-npm run build
-
-# Start production server
-npm start
+git clone https://github.com/yourusername/Bounce-webvr.git
+cd Bounce-webvr
 ```
 
-## Future Plans
+2. Install dependencies:
+```bash
+npm install
+```
 
-- VR support
-- MIDI generation based on ball collisions
-- More complex physics interactions
-- Multiple ball types with different properties
-- Save and load custom layouts 
+3. Start the development server:
+```bash
+npm run dev
+```
+
+## Testing
+
+Run the test suite:
+```bash
+npm test
+```
+
+## Contributing
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## License
+
+[MIT License](LICENSE)
+
+## Acknowledgments
+
+- Three.js for 3D graphics
+- Cannon.js for physics simulation
+- Tone.js for audio synthesis 

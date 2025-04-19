@@ -74,9 +74,18 @@ if (!canvas) {
 }
 
 // Set up camera first
-const activeCamera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-activeCamera.position.set(0, 5, 10); // Adjusted for better view
+const activeCamera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+activeCamera.position.set(0, 15, 20); // Moved back and up for a more top-down view
 activeCamera.lookAt(0, 0, 0);
+
+// Add camera controls for better view adjustment
+const controls = new THREE.OrbitControls(activeCamera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.05;
+controls.screenSpacePanning = true;
+controls.minDistance = 10;
+controls.maxDistance = 30;
+controls.maxPolarAngle = Math.PI / 2.5; // Limit how far down we can look
 
 // Set up renderer
 const renderer = new THREE.WebGLRenderer({ 
@@ -210,11 +219,11 @@ const modeIndicator = createModeIndicator();
 function createBall(position) {
   const radius = 0.2;
   
-  // Physical body
+  // Physical body - use exact position from parameter
   const ballBody = new CANNON.Body({
     mass: 1,
     shape: new CANNON.Sphere(radius),
-    position: new CANNON.Vec3(position.x, position.y, position.z),
+    position: new CANNON.Vec3(position.x, position.y + 0.5, position.z), // Small offset in Y to prevent ground intersection
     linearDamping: 0.1,
     material: new CANNON.Material({
       friction: 0.3,
@@ -253,7 +262,7 @@ function createBall(position) {
     }
   });
   
-  // Visual ball
+  // Visual ball - match physics body position exactly
   const ballGeometry = new THREE.SphereGeometry(radius, 32, 32);
   const ballMaterial = new THREE.MeshBasicMaterial({ 
     color: Math.random() > 0.5 ? 0xff00ff : 0x00ffff, // Alternate between magenta and cyan
@@ -261,6 +270,7 @@ function createBall(position) {
     opacity: 0.9
   });
   const ballMesh = new THREE.Mesh(ballGeometry, ballMaterial);
+  ballMesh.position.copy(ballBody.position);
   ballMesh.castShadow = true;
   ballMesh.receiveShadow = true;
   scene.add(ballMesh);
@@ -292,10 +302,11 @@ async function createWall(start, end) {
   const path = new THREE.LineCurve3(points[0], points[1]);
   
   // Use TubeGeometry which follows the path with given radius
-  const wallHeight = 1.0;
-  const wallGeometry = new THREE.TubeGeometry(path, 1, wallHeight/2, 8, false);
+  const wallHeight = 0.5; // Reduced height
+  const wallThickness = 0.02; // Much thinner, like cardboard
+  const wallGeometry = new THREE.TubeGeometry(path, 1, wallThickness, 8, false);
   
-  // Create material
+  // Create material with glow effect
   const wallMaterial = new THREE.MeshBasicMaterial({ 
     color: 0x00ff00, // Neon green
     transparent: true,
@@ -314,7 +325,8 @@ async function createWall(start, end) {
   const direction = new THREE.Vector3().subVectors(end, start);
   const angle = Math.atan2(direction.y, direction.x);
   
-  const wallShape = new CANNON.Box(new CANNON.Vec3(length/2, wallHeight/2, wallHeight/2));
+  // Make physics body match visual thinness
+  const wallShape = new CANNON.Box(new CANNON.Vec3(length/2, wallHeight/2, wallThickness));
   const wallBody = new CANNON.Body({
     mass: 0,
     position: new CANNON.Vec3(center.x, center.y, center.z),
@@ -364,10 +376,11 @@ function updateTempWall() {
   
   // Create a path and tube geometry
   const path = new THREE.LineCurve3(points[0], points[1]);
-  const wallHeight = 1.0;
-  const tempWallGeometry = new THREE.TubeGeometry(path, 1, wallHeight/2, 8, false);
+  const wallHeight = 0.5; // Match the final wall height
+  const wallThickness = 0.02; // Match the final wall thickness
+  const tempWallGeometry = new THREE.TubeGeometry(path, 1, wallThickness, 8, false);
   
-  // Create material
+  // Create material with preview effect
   const tempWallMaterial = new THREE.MeshBasicMaterial({ 
     color: noteColor,
     transparent: true,
@@ -388,7 +401,7 @@ const balls = [];
 // Mouse event handlers
 function onMouseDown(event) {
   // Initialize audio on first interaction
-  if (soundEnabled && Tone.context.state !== 'running') {
+  if (soundEnabled && !audioInitialized) {
     initAudio();
   }
   
@@ -396,32 +409,47 @@ function onMouseDown(event) {
   mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
   mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
   
+  // Update raycaster with current mouse position and camera
   raycaster.setFromCamera(mouse, activeCamera);
   
-  // Toggle draw mode with Shift key
-  if (event.shiftKey) {
-    drawMode = !drawMode;
-    updateModeIndicator(modeIndicator);
+  // Get intersection point with drawing plane
+  const intersection = new THREE.Vector3();
+  const intersected = raycaster.ray.intersectPlane(drawingPlane, intersection);
+  
+  if (!intersected) {
+    console.warn('No intersection point found');
     return;
   }
   
-  if (drawMode) {
-    // Get the exact 3D position where the mouse ray intersects the drawing plane
-    const intersection = new THREE.Vector3();
-    raycaster.ray.intersectPlane(drawingPlane, intersection);
-    
-    // Start drawing a wall - set FIRST endpoint exactly at click position
+  // Shift key for wall drawing
+  if (event.shiftKey) {
     isDrawing = true;
     wallStart = intersection.clone();
-    wallEnd = intersection.clone(); // Initially same as start
+    wallEnd = intersection.clone();
     updateTempWall();
-  } else {
-    // Drop a ball
-    const intersection = new THREE.Vector3();
-    raycaster.ray.intersectPlane(drawingPlane, intersection);
-    const ball = createBall(intersection);
+  } 
+  // Command/Control key for dispenser
+  else if (event.metaKey || event.ctrlKey || event.button === 2) { // Right click also creates dispenser
+    createDispenser(intersection);
+  }
+  // Regular click for balls
+  else {
+    // Create ball at exact intersection point
+    const ball = createBall({
+      x: intersection.x,
+      y: intersection.y,
+      z: intersection.z
+    });
     balls.push(ball);
   }
+}
+
+// Create a dispenser at the specified position
+function createDispenser(position) {
+  console.log('Creating dispenser at', position);
+  // TODO: Implement dispenser creation
+  // For now, just create a ball
+  createBall(position);
 }
 
 function onMouseMove(event) {
@@ -432,22 +460,17 @@ function onMouseMove(event) {
     raycaster.setFromCamera(mouse, activeCamera);
     const intersection = new THREE.Vector3();
     raycaster.ray.intersectPlane(drawingPlane, intersection);
-    
-    // Update the SECOND endpoint continuously during drag
     wallEnd = intersection;
     updateTempWall();
   }
 }
 
-// Update the onMouseUp handler to use async createWall
 function onMouseUp(event) {
   if (isDrawing) {
-    // Get the final mouse position
     mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
     mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
     raycaster.setFromCamera(mouse, activeCamera);
     
-    // Set the SECOND endpoint exactly at release position
     const intersection = new THREE.Vector3();
     raycaster.ray.intersectPlane(drawingPlane, intersection);
     wallEnd = intersection;
@@ -466,6 +489,11 @@ function onMouseUp(event) {
     isDrawing = false;
   }
 }
+
+// Prevent context menu on right click
+canvas.addEventListener('contextmenu', (event) => {
+  event.preventDefault();
+});
 
 // Event listeners
 window.addEventListener('mousedown', onMouseDown);

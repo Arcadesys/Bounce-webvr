@@ -10,6 +10,10 @@ export default defineConfig({
     strictPort: true,
     watch: {
       usePolling: true
+    },
+    fs: {
+      // Allow serving files from one level up to the project root
+      allow: ['..']
     }
   },
   resolve: {
@@ -40,5 +44,8 @@ export default defineConfig({
     deps: {
       inline: [/three/, /cannon-es/, /tone/]
     }
-  }
+  },
+  // Add debug options
+  logLevel: 'info',
+  clearScreen: false
 }); 
