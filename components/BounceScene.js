@@ -1,28 +1,45 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { SceneManager } from '../utils/sceneManager';
+import AudioPermissionModal from './AudioPermissionModal';
+import LoadingScreen from './LoadingScreen';
 
 export default function BounceScene() {
   const canvasRef = useRef(null);
   const sceneManagerRef = useRef(null);
+  const [showAudioModal, setShowAudioModal] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     if (!canvasRef.current) return;
 
-    // Create scene manager
-    const sceneManager = new SceneManager(canvasRef.current);
-    sceneManagerRef.current = sceneManager;
-
-    // Handle window resize
-    const handleResize = () => {
-      if (canvasRef.current) {
-        canvasRef.current.width = window.innerWidth;
-        canvasRef.current.height = window.innerHeight;
+    const initScene = async () => {
+      try {
+        // Create scene manager
+        const sceneManager = new SceneManager(canvasRef.current);
+        sceneManagerRef.current = sceneManager;
+        
+        // Handle window resize
+        const handleResize = () => {
+          if (canvasRef.current) {
+            canvasRef.current.width = window.innerWidth;
+            canvasRef.current.height = window.innerHeight;
+          }
+        };
+        
+        // Initial resize
+        handleResize();
+        window.addEventListener('resize', handleResize);
+        
+        // Scene is ready, show audio modal
+        setIsLoading(false);
+        setShowAudioModal(true);
+      } catch (error) {
+        console.error('Error initializing scene:', error);
+        // You might want to show an error state here
       }
     };
-    
-    // Initial resize
-    handleResize();
-    window.addEventListener('resize', handleResize);
+
+    initScene();
 
     // Cleanup
     return () => {
@@ -33,19 +50,31 @@ export default function BounceScene() {
     };
   }, []);
 
+  const handleAudioPermission = () => {
+    setShowAudioModal(false);
+    if (sceneManagerRef.current) {
+      sceneManagerRef.current.isInitialized = true;
+    }
+  };
+
   return (
-    <canvas 
-      ref={canvasRef} 
-      style={{ 
-        width: '100vw', 
-        height: '100vh',
-        display: 'block',
-        touchAction: 'none', // Prevent default touch actions
-        outline: 'none' // Remove focus outline
-      }}
-      tabIndex={0} // Make canvas focusable
-      aria-label="Interactive 3D physics playground. Click to create balls, shift-click and drag to create walls."
-    />
+    <>
+      <canvas 
+        ref={canvasRef} 
+        style={{ 
+          width: '100vw', 
+          height: '100vh',
+          display: 'block',
+          touchAction: 'none', // Prevent default touch actions
+          outline: 'none', // Remove focus outline
+          visibility: isLoading ? 'hidden' : 'visible' // Hide canvas while loading
+        }}
+        tabIndex={0} // Make canvas focusable
+        aria-label="Interactive 3D physics playground. Click to create balls, shift-click and drag to create walls."
+      />
+      {isLoading && <LoadingScreen />}
+      {showAudioModal && !isLoading && <AudioPermissionModal onPermissionGranted={handleAudioPermission} />}
+    </>
   );
 }
 

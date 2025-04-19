@@ -14,10 +14,13 @@ export class SceneManager {
     this.raycaster = new THREE.Raycaster();
     this.drawingPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
     
+    // Initialize everything synchronously to avoid race conditions
     this.initScene();
     this.initPhysics();
     this.addVisualHelpers();
     this.setupEventListeners();
+    
+    // Start animation loop
     this.animate();
   }
 
@@ -110,17 +113,7 @@ export class SceneManager {
   }
 
   onMouseDown = async (event) => {
-    // Initialize audio on first interaction
-    if (!this.isInitialized) {
-      try {
-        await Tone.start();
-        this.isInitialized = true;
-        console.log('Audio initialized');
-      } catch (error) {
-        console.warn('Error initializing audio:', error);
-      }
-    }
-
+    // Audio should already be initialized through the modal
     this.updateMousePosition(event);
 
     if (event.shiftKey) {
