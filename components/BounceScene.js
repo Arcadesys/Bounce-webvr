@@ -2,63 +2,190 @@ import React, { useEffect, useRef, useState } from 'react';
 import { SceneManager } from '../utils/sceneManager';
 import AudioPermissionModal from './AudioPermissionModal';
 import LoadingScreen from './LoadingScreen';
+import VoiceAssignmentPanel from './VoiceAssignmentPanel';
+import { playCollisionSound } from '../utils/audio';
+import { createPhysicsWorld, createBallBody, createWallBody, updatePhysics, isBallOutOfBounds, cleanupBalls } from '../physics';
 
 export default function BounceScene() {
   const canvasRef = useRef(null);
   const sceneManagerRef = useRef(null);
   const [showAudioModal, setShowAudioModal] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadingState, setLoadingState] = useState('Initializing...');
+  const [loadingError, setLoadingError] = useState(null);
+  const [walls, setWalls] = useState([]);
+  const [showVoicePanel, setShowVoicePanel] = useState(false);
+  const worldRef = useRef(null);
+  const ballsRef = useRef([]);
 
   useEffect(() => {
-    if (!canvasRef.current) return;
+    console.log('BounceScene: Starting initialization');
+    let timeoutId;
 
     const initScene = async () => {
       try {
-        // Create scene manager
-        const sceneManager = new SceneManager(canvasRef.current);
-        sceneManagerRef.current = sceneManager;
+        // Set a timeout to detect hangs
+        timeoutId = setTimeout(() => {
+          console.warn('BounceScene: Initialization taking longer than expected');
+          setLoadingError('Loading is taking longer than expected. You may need to refresh.');
+        }, 5000);
+
+        const canvas = canvasRef.current;
+        if (!canvas) {
+          throw new Error('Canvas not found');
+        }
+        console.log('BounceScene: Canvas element found');
         
-        // Handle window resize
-        const handleResize = () => {
-          if (canvasRef.current) {
-            canvasRef.current.width = window.innerWidth;
-            canvasRef.current.height = window.innerHeight;
-          }
-        };
-        
-        // Initial resize
-        handleResize();
-        window.addEventListener('resize', handleResize);
-        
-        // Scene is ready, show audio modal
+        setLoadingState('Creating physics world...');
+        console.log('BounceScene: Creating physics world');
+        const world = createPhysicsWorld();
+        worldRef.current = world;
+        console.log('BounceScene: Physics world created');
+
+        // Set up collision event listener
+        setLoadingState('Setting up collision detection...');
+        console.log('BounceScene: Setting up collision listener');
+        world.addEventListener('collide', (event) => {
+          playCollisionSound();
+        });
+
+        // Create initial walls
+        setLoadingState('Creating walls...');
+        console.log('BounceScene: Creating initial walls');
+        const walls = [
+          { id: 1, position: [0, 0, -10], size: [20, 10, 1], voice: 'A' },
+          { id: 2, position: [-10, 0, 0], size: [1, 10, 20], voice: 'B' },
+          { id: 3, position: [10, 0, 0], size: [1, 10, 20], voice: 'A' },
+          { id: 4, position: [0, 0, 10], size: [20, 10, 1], voice: 'B' }
+        ];
+
+        walls.forEach(wall => {
+          console.log(`BounceScene: Creating wall ${wall.id}`);
+          createWallBody(world, wall.position, wall.size);
+        });
+
+        setWalls(walls);
+        console.log('BounceScene: All walls created');
+
+        // Clear timeout since we've finished initialization
+        clearTimeout(timeoutId);
+        setLoadingState('Ready!');
         setIsLoading(false);
-        setShowAudioModal(true);
+        console.log('BounceScene: Initialization complete');
+
+        // Start physics loop
+        const animate = () => {
+          updatePhysics(world);
+          requestAnimationFrame(animate);
+        };
+        animate();
+        console.log('BounceScene: Animation loop started');
+
       } catch (error) {
-        console.error('Error initializing scene:', error);
-        // You might want to show an error state here
+        console.error('BounceScene: Initialization error:', error);
+        setLoadingError(`Error loading scene: ${error.message}`);
+        clearTimeout(timeoutId);
       }
     };
 
     initScene();
 
-    // Cleanup
     return () => {
-      window.removeEventListener('resize', handleResize);
-      if (sceneManagerRef.current) {
-        sceneManagerRef.current.dispose();
+      console.log('BounceScene: Cleaning up');
+      clearTimeout(timeoutId);
+      if (worldRef.current) {
+        worldRef.current.remove();
       }
     };
   }, []);
 
   const handleAudioPermission = () => {
+    console.log('BounceScene: Audio permission granted');
     setShowAudioModal(false);
     if (sceneManagerRef.current) {
       sceneManagerRef.current.isInitialized = true;
     }
   };
 
+  const handleVoiceChange = (wallId, voice) => {
+    console.log(`BounceScene: Changing voice for wall ${wallId} to ${voice}`);
+    setWalls(walls.map(wall => 
+      wall.id === wallId ? { ...wall, voice } : wall
+    ));
+  };
+
+  const toggleVoicePanel = () => {
+    setShowVoicePanel(!showVoicePanel);
+  };
+
+  if (isLoading) {
+    return (
+      <div className="loading">
+        <div className="spinner"></div>
+        <p>{loadingState}</p>
+        {loadingError && (
+          <div className="error-message">
+            {loadingError}
+            <button onClick={() => window.location.reload()}>
+              Refresh Page
+            </button>
+          </div>
+        )}
+        <style jsx>{`
+          .loading {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background: #f5f5f5;
+            color: #333;
+          }
+          .spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #2196f3;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+          }
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+          p {
+            font-size: 18px;
+            margin: 10px 0;
+          }
+          .error-message {
+            color: #d32f2f;
+            text-align: center;
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #d32f2f;
+            border-radius: 4px;
+            background: #ffebee;
+          }
+          button {
+            margin-top: 10px;
+            padding: 8px 16px;
+            background: #2196f3;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+          }
+          button:hover {
+            background: #1976d2;
+          }
+        `}</style>
+      </div>
+    );
+  }
+
   return (
-    <>
+    <div className="scene-container">
       <canvas 
         ref={canvasRef} 
         style={{ 
@@ -72,9 +199,62 @@ export default function BounceScene() {
         tabIndex={0} // Make canvas focusable
         aria-label="Interactive 3D physics playground. Click to create balls, shift-click and drag to create walls."
       />
-      {isLoading && <LoadingScreen />}
+      
       {showAudioModal && !isLoading && <AudioPermissionModal onPermissionGranted={handleAudioPermission} />}
-    </>
+      
+      <div className="controls-overlay">
+        <button 
+          onClick={toggleVoicePanel}
+          className="voice-panel-toggle"
+          aria-label="Toggle voice assignment panel"
+        >
+          {showVoicePanel ? 'Hide Voice Panel' : 'Show Voice Panel'}
+        </button>
+      </div>
+
+      {showVoicePanel && (
+        <VoiceAssignmentPanel
+          walls={walls}
+          onVoiceChange={handleVoiceChange}
+        />
+      )}
+      
+      <style jsx>{`
+        .scene-container {
+          position: relative;
+          width: 100%;
+          height: 100vh;
+          background: #f0f0f0;
+        }
+
+        canvas {
+          width: 100%;
+          height: 100%;
+        }
+
+        .controls-overlay {
+          position: absolute;
+          top: 20px;
+          right: 20px;
+          z-index: 5;
+        }
+
+        .voice-panel-toggle {
+          padding: 8px 16px;
+          background: #2196f3;
+          color: white;
+          border: none;
+          border-radius: 4px;
+          cursor: pointer;
+          font-size: 14px;
+          transition: background-color 0.2s;
+        }
+
+        .voice-panel-toggle:hover {
+          background: #1976d2;
+        }
+      `}</style>
+    </div>
   );
 }
 

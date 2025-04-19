@@ -1,13 +1,139 @@
 import * as CANNON from 'cannon-es';
+import { initVoicePool, playNoteForBeam, assignBeamToVoice } from '../utils/voiceManager';
+
+// Event emitter for collision events
+const collisionEvents = {
+  listeners: new Set(),
+  emit(collisionData) {
+    this.listeners.forEach(listener => listener(collisionData));
+  },
+  subscribe(listener) {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+};
+
+// Map to store beam IDs
+const beamIds = new Map();
 
 /**
  * Creates a physics world with default gravity
  * @returns {Object} The physics world
  */
 export function createPhysicsWorld() {
-  return new CANNON.World({
-    gravity: new CANNON.Vec3(0, -9.82, 0)
+  console.log('Physics: Starting world creation');
+  const world = new CANNON.World();
+  world.gravity.set(0, -9.82, 0);
+  world.broadphase = new CANNON.NaiveBroadphase();
+  world.solver = new CANNON.GSSolver();
+  world.solver.iterations = 10;
+  world.defaultContactMaterial.friction = 0.1;
+  world.defaultContactMaterial.restitution = 0.9;
+  console.log('Physics: World configuration complete');
+
+  // Initialize voice pool for collision sounds
+  console.log('Physics: Initializing voice pool');
+  initVoicePool().catch(error => {
+    console.error('Physics: Error initializing voice pool:', error);
   });
+
+  // Add collision event listener
+  console.log('Physics: Setting up collision listener');
+  world.addEventListener('collide', (event) => {
+    // Get the beam ID from the collision
+    const beamId = getBeamIdFromCollision(event);
+    
+    if (!beamId) {
+      // If no beam ID, use a default voice
+      handleDefaultCollision(event);
+      return;
+    }
+    
+    // Calculate collision intensity based on relative velocity
+    const relativeVelocity = event.contact.getImpactVelocityAlongNormal();
+    const intensity = Math.min(Math.abs(relativeVelocity) / 10, 1);
+    
+    // Simple pentatonic scale for pleasant sounds
+    const pentatonicScale = ['C4', 'E4', 'G4', 'A4', 'C5'];
+    const noteIndex = Math.floor(intensity * (pentatonicScale.length - 1));
+    const note = pentatonicScale[noteIndex];
+    
+    // Play the collision sound for this specific beam
+    playNoteForBeam(beamId, note, '16n', intensity);
+    
+    // Emit collision event with data
+    collisionEvents.emit({
+      bodyA: event.body,
+      bodyB: event.contact.bi === event.body ? event.contact.bj : event.contact.bi,
+      beamId,
+      intensity,
+      note
+    });
+  });
+
+  console.log('Physics: Creating walls');
+  // Create walls
+  const wallMaterial = new CANNON.Material({
+    friction: 0.1,
+    restitution: 0.9
+  });
+
+  // Floor
+  console.log('Physics: Creating floor');
+  const floor = createWallBody(
+    { x: 0, y: -5, z: 0 },
+    { x: 10, y: 0.5, z: 10 }
+  );
+  world.addBody(floor.body);
+  world.addContactMaterial(floor.contactMaterial);
+
+  // Ceiling
+  console.log('Physics: Creating ceiling');
+  const ceiling = createWallBody(
+    { x: 0, y: 5, z: 0 },
+    { x: 10, y: 0.5, z: 10 }
+  );
+  world.addBody(ceiling.body);
+  world.addContactMaterial(ceiling.contactMaterial);
+
+  // Left wall
+  console.log('Physics: Creating left wall');
+  const leftWall = createWallBody(
+    { x: -5, y: 0, z: 0 },
+    { x: 0.5, y: 10, z: 10 }
+  );
+  world.addBody(leftWall.body);
+  world.addContactMaterial(leftWall.contactMaterial);
+
+  // Right wall
+  console.log('Physics: Creating right wall');
+  const rightWall = createWallBody(
+    { x: 5, y: 0, z: 0 },
+    { x: 0.5, y: 10, z: 10 }
+  );
+  world.addBody(rightWall.body);
+  world.addContactMaterial(rightWall.contactMaterial);
+
+  // Front wall
+  console.log('Physics: Creating front wall');
+  const frontWall = createWallBody(
+    { x: 0, y: 0, z: -5 },
+    { x: 10, y: 10, z: 0.5 }
+  );
+  world.addBody(frontWall.body);
+  world.addContactMaterial(frontWall.contactMaterial);
+
+  // Back wall
+  console.log('Physics: Creating back wall');
+  const backWall = createWallBody(
+    { x: 0, y: 0, z: 5 },
+    { x: 10, y: 10, z: 0.5 }
+  );
+  world.addBody(backWall.body);
+  world.addContactMaterial(backWall.contactMaterial);
+
+  console.log('Physics: World creation complete');
+  return world;
 }
 
 /**
@@ -18,18 +144,32 @@ export function createPhysicsWorld() {
  * @returns {CANNON.Body} The ball physics body
  */
 export function createBallBody(position, radius = 0.2, world = null) {
+  const ballMaterial = new CANNON.Material({
+    friction: 0.1,
+    restitution: 0.9
+  });
+
   const ballBody = new CANNON.Body({
-    mass: 1,
+    mass: 0.05,
     shape: new CANNON.Sphere(radius),
     position: new CANNON.Vec3(position.x, position.y, position.z),
     linearDamping: 0.1,
-    material: new CANNON.Material({
-      friction: 0.3,
-      restitution: 0.7, // Bounciness
-    })
+    material: ballMaterial
   });
   
   if (world) {
+    // Add contact material for ball-to-ball collisions
+    const ballContactMaterial = new CANNON.ContactMaterial(
+      ballMaterial,
+      ballMaterial,
+      {
+        friction: 0.1,
+        restitution: 0.9,
+        contactEquationRelaxation: 3,
+        contactEquationStiffness: 1e8
+      }
+    );
+    world.addContactMaterial(ballContactMaterial);
     world.addBody(ballBody);
   }
   
@@ -38,52 +178,36 @@ export function createBallBody(position, radius = 0.2, world = null) {
 
 /**
  * Creates a wall physics body
- * @param {Object} start - The start position {x, y, z}
- * @param {Object} end - The end position {x, y, z}
- * @param {CANNON.World} world - The physics world to add the wall to
- * @returns {CANNON.Body} The wall physics body
+ * @param {Object} position - The position {x, y, z}
+ * @param {Object} dimensions - The dimensions {x, y, z}
+ * @returns {Object} The wall physics body and its contact material
  */
-export function createWallBody(start, end, world = null) {
-  // Calculate wall properties
-  const direction = {
-    x: end.x - start.x,
-    y: end.y - start.y,
-    z: end.z - start.z
-  };
-  
-  // Calculate length using distance formula
-  const length = Math.sqrt(
-    Math.pow(direction.x, 2) + 
-    Math.pow(direction.y, 2) + 
-    Math.pow(direction.z, 2)
-  );
-  
-  // Calculate center position
-  const center = {
-    x: (start.x + end.x) / 2,
-    y: (start.y + end.y) / 2,
-    z: (start.z + end.z) / 2
-  };
-  
-  // Calculate rotation
-  const angle = Math.atan2(direction.x, direction.y);
-  
-  // Create physical wall
-  const wallShape = new CANNON.Box(new CANNON.Vec3(length/2, 0.5, 0.5));
+export function createWallBody(position, dimensions) {
+  const wallMaterial = new CANNON.Material({
+    friction: 0.1,
+    restitution: 0.9
+  });
+
   const wallBody = new CANNON.Body({
     mass: 0, // Static body
-    position: new CANNON.Vec3(center.x, center.y, center.z),
-    shape: wallShape,
+    shape: new CANNON.Box(new CANNON.Vec3(dimensions.x / 2, dimensions.y / 2, dimensions.z / 2)),
+    position: new CANNON.Vec3(position.x, position.y, position.z),
+    material: wallMaterial
   });
-  
-  // Rotate to match direction
-  wallBody.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 0, 1), -angle);
-  
-  if (world) {
-    world.addBody(wallBody);
-  }
-  
-  return wallBody;
+
+  // Add contact material for ball-wall collisions
+  const wallContactMaterial = new CANNON.ContactMaterial(
+    wallMaterial,
+    wallMaterial,
+    {
+      friction: 0.1,
+      restitution: 0.9,
+      contactEquationRelaxation: 3,
+      contactEquationStiffness: 1e8
+    }
+  );
+
+  return { body: wallBody, material: wallMaterial, contactMaterial: wallContactMaterial };
 }
 
 /**
@@ -125,4 +249,73 @@ export function cleanupBalls(balls, scene, world, lowerBound = -10) {
     }
   }
   return removed;
+}
+
+/**
+ * Subscribe to collision events
+ * @param {Function} listener - Callback function to execute on collision
+ * @returns {Function} Unsubscribe function
+ */
+export function onCollision(listener) {
+  return collisionEvents.subscribe(listener);
+}
+
+/**
+ * Handle collisions that don't involve a beam
+ */
+function handleDefaultCollision(event) {
+  // Calculate collision intensity
+  const relativeVelocity = event.contact.getImpactVelocityAlongNormal();
+  const intensity = Math.min(Math.abs(relativeVelocity) / 10, 1);
+  
+  // Use a default note for non-beam collisions
+  const note = 'C4';
+  
+  // Play a simple bounce sound
+  playNoteForBeam('default', note, '16n', intensity * 0.5);
+  
+  // Emit collision event
+  collisionEvents.emit({
+    bodyA: event.body,
+    bodyB: event.contact.bi === event.body ? event.contact.bj : event.contact.bi,
+    intensity,
+    note
+  });
+}
+
+/**
+ * Get the beam ID from a collision event
+ */
+function getBeamIdFromCollision(event) {
+  // Check if either body in the collision is a beam
+  const bodyA = event.body;
+  const bodyB = event.contact.bi === bodyA ? event.contact.bj : event.contact.bi;
+  
+  // Look up beam IDs
+  for (const [id, body] of beamIds.entries()) {
+    if (body === bodyA || body === bodyB) {
+      return id;
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * Register a beam with the physics system
+ * @param {string} beamId - Unique identifier for the beam
+ * @param {CANNON.Body} body - The physics body for the beam
+ * @param {string} voice - Voice to assign ('A' or 'B')
+ */
+export function registerBeam(beamId, body, voice = 'A') {
+  beamIds.set(beamId, body);
+  assignBeamToVoice(beamId, voice);
+}
+
+/**
+ * Unregister a beam from the physics system
+ * @param {string} beamId - The beam ID to unregister
+ */
+export function unregisterBeam(beamId) {
+  beamIds.delete(beamId);
 } 

@@ -67,210 +67,602 @@ HTMLCanvasElement.prototype.getContext = vi.fn((contextType) => {
   return null;
 });
 
-// Create Vec3 mock first since it's used in other mocks
-const Vec3 = vi.fn().mockImplementation((x = 0, y = 0, z = 0) => ({ x, y, z }));
-
 // Mock Three.js
-vi.mock('three', () => {
-  return {
-    Scene: vi.fn().mockImplementation(() => ({
-      add: vi.fn(),
-      remove: vi.fn(),
-      clear: vi.fn(),
-      children: []
-    })),
-    PerspectiveCamera: vi.fn(),
-    WebGLRenderer: vi.fn().mockImplementation(() => ({
-      setSize: vi.fn(),
-      render: vi.fn(),
-      domElement: document.createElement('canvas')
-    })),
-    BoxGeometry: vi.fn().mockImplementation((width = 1, height = 1, depth = 1) => ({
-      parameters: {
-        width,
-        height,
-        depth
-      },
-      dispose: vi.fn()
-    })),
-    MeshStandardMaterial: vi.fn().mockImplementation((props) => ({
-      ...props,
-      dispose: vi.fn()
-    })),
-    Mesh: vi.fn().mockImplementation(() => {
-      const geometry = { parameters: { width: 1, height: 40, depth: 20 }, dispose: vi.fn() };
-      return {
-        position: { set: vi.fn(), copy: vi.fn() },
-        rotation: { z: 0 },
-        quaternion: { copy: vi.fn() },
-        geometry,
-        material: { dispose: vi.fn() }
-      };
-    }),
-    Vector3: Vec3,
-    DoubleSide: 2
-  };
-});
+vi.mock('three', () => ({
+  Scene: vi.fn(),
+  PerspectiveCamera: vi.fn(),
+  WebGLRenderer: vi.fn(() => ({
+    setSize: vi.fn(),
+    render: vi.fn(),
+    domElement: document.createElement('canvas')
+  })),
+  BoxGeometry: vi.fn(),
+  MeshBasicMaterial: vi.fn(),
+  Mesh: vi.fn(),
+  Vector3: vi.fn(),
+  Color: vi.fn(),
+}));
 
-// Create a collision event mock
-const createCollisionEvent = (bodyA, bodyB, velocity = 5.0) => ({
-  body: bodyB,
-  contact: {
-    getImpactVelocityAlongNormal: () => velocity
+// Create Vec3 class for physics calculations
+class Vec3 {
+  constructor(x = 0, y = 0, z = 0) {
+    this.x = x;
+    this.y = y;
+    this.z = z;
   }
-});
 
-// Mock Cannon.js
-const CANNON = {
-  World: vi.fn().mockImplementation(() => {
-    const bodies = [];
-    const world = {
-      addBody: vi.fn((body) => {
-        bodies.push(body);
-        // Set up collision detection
-        body.addEventListener = vi.fn((event, callback) => {
-          if (event === 'collide') {
-            // Only trigger collisions between balls and walls
-            const isBall = body.shape?.type === 'Sphere';
-            const isWall = body.shape?.type === 'Box';
-            
-            // Store the callback for later use
-            body._collideCallback = callback;
-          }
-        });
-      }),
-      removeBody: vi.fn((body) => {
-        const index = bodies.indexOf(body);
-        if (index > -1) {
-          bodies.splice(index, 1);
+  set(x, y, z) {
+    this.x = x;
+    this.y = y;
+    this.z = z;
+    return this;
+  }
+
+  copy(v) {
+    this.x = v.x;
+    this.y = v.y;
+    this.z = v.z;
+    return this;
+  }
+
+  length() {
+    return Math.sqrt(this.x * this.x + this.y * this.y + this.z * this.z);
+  }
+
+  normalize() {
+    const length = this.length();
+    if (length > 0) {
+      this.x /= length;
+      this.y /= length;
+      this.z /= length;
+    }
+    return this;
+  }
+
+  dot(v) {
+    return this.x * v.x + this.y * v.y + this.z * v.z;
+  }
+
+  cross(v) {
+    const x = this.y * v.z - this.z * v.y;
+    const y = this.z * v.x - this.x * v.z;
+    const z = this.x * v.y - this.y * v.x;
+    return new Vec3(x, y, z);
+  }
+
+  scale(scalar) {
+    this.x *= scalar;
+    this.y *= scalar;
+    this.z *= scalar;
+    return this;
+  }
+
+  add(v) {
+    this.x += v.x;
+    this.y += v.y;
+    this.z += v.z;
+    return this;
+  }
+
+  sub(v) {
+    this.x -= v.x;
+    this.y -= v.y;
+    this.z -= v.z;
+    return this;
+  }
+
+  clone() {
+    return new Vec3(this.x, this.y, this.z);
+  }
+}
+
+// Create Quaternion class for rotations
+class Quaternion {
+  constructor(x = 0, y = 0, z = 0, w = 1) {
+    this.x = x;
+    this.y = y;
+    this.z = z;
+    this.w = w;
+  }
+
+  setFromAxisAngle(axis, angle) {
+    const halfAngle = angle / 2;
+    const s = Math.sin(halfAngle);
+    this.x = axis.x * s;
+    this.y = axis.y * s;
+    this.z = axis.z * s;
+    this.w = Math.cos(halfAngle);
+    return this;
+  }
+
+  multiply(q) {
+    const ax = this.x, ay = this.y, az = this.z, aw = this.w;
+    const bx = q.x, by = q.y, bz = q.z, bw = q.w;
+
+    this.x = ax * bw + aw * bx + ay * bz - az * by;
+    this.y = ay * bw + aw * by + az * bx - ax * bz;
+    this.z = az * bw + aw * bz + ax * by - ay * bx;
+    this.w = aw * bw - ax * bx - ay * by - az * bz;
+
+    return this;
+  }
+
+  transformVector(v) {
+    const x = v.x, y = v.y, z = v.z;
+    const qx = this.x, qy = this.y, qz = this.z, qw = this.w;
+
+    // Calculate quat * vector
+    const ix = qw * x + qy * z - qz * y;
+    const iy = qw * y + qz * x - qx * z;
+    const iz = qw * z + qx * y - qy * x;
+    const iw = -qx * x - qy * y - qz * z;
+
+    // Calculate result * inverse quat
+    return new Vec3(
+      ix * qw + iw * -qx + iy * -qz - iz * -qy,
+      iy * qw + iw * -qy + iz * -qx - ix * -qz,
+      iz * qw + iw * -qz + ix * -qy - iy * -qx
+    );
+  }
+
+  clone() {
+    return new Quaternion(this.x, this.y, this.z, this.w);
+  }
+}
+
+// Create Contact class for collision events
+class Contact {
+  constructor(bodyA, bodyB, normal, velocity = 5.0) {
+    this.bodyA = bodyA;
+    this.bodyB = bodyB;
+    this.ni = normal;
+    this.velocity = velocity;
+  }
+
+  getImpactVelocityAlongNormal() {
+    const relativeVel = this.bodyA.velocity.clone().sub(this.bodyB.velocity || new Vec3());
+    return Math.abs(this.ni.dot(relativeVel));
+  }
+}
+
+// Helper function to calculate kinetic energy
+const getKineticEnergy = (body) => {
+  const v = body.velocity;
+  return 0.5 * body.mass * (v.x * v.x + v.y * v.y + v.z * v.z);
+};
+
+// Helper function to handle ball-to-ball collision
+const handleBallCollision = (body1, body2, normal, restitution) => {
+  const relativeVel = body1.velocity.clone().sub(body2.velocity || new Vec3());
+  const normalVel = normal.dot(relativeVel);
+  
+  if (normalVel < 0) {
+    const totalMass = body1.mass + body2.mass;
+    const reducedMass = (body1.mass * body2.mass) / totalMass;
+    const j = -(1 + restitution) * normalVel * reducedMass;
+    const impulse = normal.clone().scale(j);
+    
+    // Apply impulses
+    const scale1 = 1 / body1.mass;
+    const scale2 = body2.mass === 0 ? 0 : 1 / body2.mass;
+    
+    body1.velocity.add(impulse.clone().scale(scale1));
+    if (body2.mass > 0) {
+      body2.velocity.sub(impulse.clone().scale(scale2));
+    }
+    
+    // Apply angular impulse
+    if (body1.angularVelocity && body2.angularVelocity) {
+      const r1 = normal.clone().scale(body1.shape.radius);
+      const r2 = normal.clone().scale(-body2.shape.radius);
+      
+      const angularImpulse1 = r1.cross(impulse).scale(1 / (body1.mass * body1.shape.radius * body1.shape.radius));
+      const angularImpulse2 = r2.cross(impulse).scale(1 / (body2.mass * body2.shape.radius * body2.shape.radius));
+      
+      body1.angularVelocity.add(angularImpulse1);
+      if (body2.mass > 0) {
+        body2.angularVelocity.add(angularImpulse2);
+      }
+    }
+  }
+};
+
+// Helper function to find the earliest collision along a ray
+const findEarliestCollision = (body, sweep, other, dt) => {
+  if (!sweep) return null;
+  
+  const { start, end, ray, rayLength } = sweep;
+  let tMin = rayLength;
+  let hitNormal = null;
+  
+  if (other.shape.type === 'Box') {
+    // Transform ray to box space
+    const localStart = start.clone();
+    const localRay = ray.clone();
+    if (other.quaternion) {
+      const invQuaternion = new Quaternion(-other.quaternion.x, -other.quaternion.y, -other.quaternion.z, other.quaternion.w);
+      localStart.copy(invQuaternion.transformVector(localStart.clone().sub(other.position)));
+      localRay.copy(invQuaternion.transformVector(ray));
+    }
+    
+    // Box intersection
+    const halfExtents = other.shape.halfExtents;
+    const bounds = {
+      min: new Vec3(-halfExtents.x, -halfExtents.y, -halfExtents.z),
+      max: new Vec3(halfExtents.x, halfExtents.y, halfExtents.z)
+    };
+    
+    // Ray-AABB intersection
+    const t1 = (bounds.min.x - localStart.x) / (localRay.x || 1e-10);
+    const t2 = (bounds.max.x - localStart.x) / (localRay.x || 1e-10);
+    const t3 = (bounds.min.y - localStart.y) / (localRay.y || 1e-10);
+    const t4 = (bounds.max.y - localStart.y) / (localRay.y || 1e-10);
+    const t5 = (bounds.min.z - localStart.z) / (localRay.z || 1e-10);
+    const t6 = (bounds.max.z - localStart.z) / (localRay.z || 1e-10);
+    
+    const tNear = Math.max(
+      Math.min(t1, t2),
+      Math.min(t3, t4),
+      Math.min(t5, t6)
+    );
+    const tFar = Math.min(
+      Math.max(t1, t2),
+      Math.max(t3, t4),
+      Math.max(t5, t6)
+    );
+    
+    if (tNear <= tFar && tNear >= 0 && tNear < tMin) {
+      tMin = tNear;
+      // Determine hit normal in local space
+      const hitPoint = localStart.clone().add(localRay.clone().scale(tNear));
+      const normals = [
+        new Vec3(1, 0, 0),
+        new Vec3(-1, 0, 0),
+        new Vec3(0, 1, 0),
+        new Vec3(0, -1, 0),
+        new Vec3(0, 0, 1),
+        new Vec3(0, 0, -1)
+      ];
+      let bestNormal = normals[0];
+      let minDist = Math.abs(hitPoint.x - halfExtents.x);
+      
+      const distances = [
+        Math.abs(hitPoint.x - halfExtents.x),
+        Math.abs(hitPoint.x + halfExtents.x),
+        Math.abs(hitPoint.y - halfExtents.y),
+        Math.abs(hitPoint.y + halfExtents.y),
+        Math.abs(hitPoint.z - halfExtents.z),
+        Math.abs(hitPoint.z + halfExtents.z)
+      ];
+      
+      for (let i = 1; i < distances.length; i++) {
+        if (distances[i] < minDist) {
+          minDist = distances[i];
+          bestNormal = normals[i];
         }
-      }),
-      step: vi.fn((dt) => {
-        // Simulate physics step
-        bodies.forEach(body => {
-          if (body.velocity) {
-            // Apply gravity
-            body.velocity.y -= 9.82 * dt;
-            // Update position
-            body.position.y += body.velocity.y * dt;
-            body.position.x += body.velocity.x * dt;
-            body.position.z += body.velocity.z * dt;
-          }
-          
-          // Check for collisions
-          if (body._collideCallback) {
-            const isBall = body.shape?.type === 'Sphere';
-            bodies.forEach(otherBody => {
-              if (otherBody !== body) {
-                const otherIsWall = otherBody.shape?.type === 'Box';
-                // Only trigger ball-wall collisions
-                if (isBall && otherIsWall) {
-                  // Simple collision detection - if ball is close to wall
-                  const dx = body.position.x - otherBody.position.x;
-                  const dy = body.position.y - otherBody.position.y;
-                  const dz = body.position.z - otherBody.position.z;
-                  const distance = Math.sqrt(dx*dx + dy*dy + dz*dz);
-                  
-                  if (distance < (body.shape.radius + 0.1)) { // 0.1 is wall thickness
-                    body._collideCallback(createCollisionEvent(body, otherBody));
-                    // Bounce the ball
-                    if (Math.abs(dy) < 0.1) { // Horizontal collision
-                      body.velocity.x *= -0.8;
-                    } else { // Vertical collision
-                      body.velocity.y *= -0.8;
+      }
+      
+      // Transform normal back to world space
+      hitNormal = other.quaternion ? other.quaternion.transformVector(bestNormal) : bestNormal;
+    }
+  } else if (other.shape.type === 'Sphere') {
+    // Sphere intersection
+    const radius = body.shape.radius + other.shape.radius;
+    const toSphere = other.position.clone().sub(start);
+    const a = ray.dot(ray);
+    const b = 2 * ray.dot(toSphere);
+    const c = toSphere.dot(toSphere) - radius * radius;
+    const discriminant = b * b - 4 * a * c;
+    
+    if (discriminant >= 0) {
+      const t = (-b - Math.sqrt(discriminant)) / (2 * a);
+      if (t >= 0 && t < tMin) {
+        tMin = t;
+        const hitPoint = start.clone().add(ray.clone().scale(t));
+        hitNormal = hitPoint.clone().sub(other.position).normalize();
+      }
+    }
+  } else if (other.shape.type === 'Plane') {
+    // Plane intersection (assuming Y-up plane)
+    const t = (other.position.y - start.y) / (ray.y || 1e-10);
+    if (t >= 0 && t < tMin) {
+      tMin = t;
+      hitNormal = new Vec3(0, Math.sign(ray.y), 0);
+    }
+  }
+  
+  return hitNormal ? { t: tMin, normal: hitNormal } : null;
+};
+
+// Helper function to get contact material properties
+const getContactMaterial = (world, materialA, materialB) => {
+  if (!world._contactMaterials) return null;
+  return world._contactMaterials.find(cm => 
+    (cm.materials[0] === materialA && cm.materials[1] === materialB) ||
+    (cm.materials[0] === materialB && cm.materials[1] === materialA)
+  );
+};
+
+// Helper function to get collision properties
+const getCollisionProperties = (world, bodyA, bodyB) => {
+  const contactMaterial = getContactMaterial(world, bodyA.material, bodyB.material);
+  if (contactMaterial) {
+    return {
+      friction: contactMaterial.friction,
+      restitution: contactMaterial.restitution
+    };
+  }
+  
+  // Use material properties if no contact material
+  const restitution = Math.min(
+    bodyA.material?.restitution ?? 0.3,
+    bodyB.material?.restitution ?? 0.3
+  );
+  const friction = Math.min(
+    bodyA.material?.friction ?? 0.3,
+    bodyB.material?.friction ?? 0.3
+  );
+  
+  return { friction, restitution };
+};
+
+// Mock Cannon.js with better physics simulation
+vi.mock('cannon-es', () => {
+  const bodies = new Set();
+  
+  return {
+    Vec3,
+    Quaternion,
+    World: vi.fn(() => {
+      const world = {
+        gravity: new Vec3(0, -9.82, 0),
+        bodies: bodies,
+        _contactMaterials: [],
+        addBody: vi.fn((body) => {
+          bodies.add(body);
+          // Initialize collision handlers array
+          body._collideHandlers = [];
+          body.addEventListener = (event, handler) => {
+            if (event === 'collide') {
+              body._collideHandlers.push(handler);
+            }
+          };
+        }),
+        removeBody: vi.fn((body) => {
+          bodies.delete(body);
+        }),
+        addContactMaterial: vi.fn((contactMaterial) => {
+          world._contactMaterials.push(contactMaterial);
+        }),
+        step: vi.fn((dt) => {
+          // Simple physics simulation
+          bodies.forEach(body => {
+            if (body.mass > 0) { // Only move dynamic bodies
+              const initialEnergy = getKineticEnergy(body);
+              
+              // Apply gravity
+              body.velocity.y += dt * world.gravity.y;
+              
+              // Apply angular velocity
+              if (body.angularVelocity && body.angularVelocity.length() > 0) {
+                const angle = body.angularVelocity.length() * dt;
+                const axis = body.angularVelocity.clone().normalize();
+                const rotation = new Quaternion().setFromAxisAngle(axis, angle);
+                body.quaternion.multiply(rotation);
+              }
+              
+              // Continuous collision detection
+              const sweep = sweepTest(body, dt);
+              let earliestCollision = null;
+              let collidingBody = null;
+              
+              // Find earliest collision
+              bodies.forEach(other => {
+                if (other !== body) {
+                  const collision = findEarliestCollision(body, sweep, other, dt);
+                  if (collision && (!earliestCollision || collision.t < earliestCollision.t)) {
+                    earliestCollision = collision;
+                    collidingBody = other;
+                  }
+                }
+              });
+              
+              if (earliestCollision) {
+                // Move to collision point
+                const t = earliestCollision.t;
+                body.position.x += body.velocity.x * t;
+                body.position.y += body.velocity.y * t;
+                body.position.z += body.velocity.z * t;
+                
+                // Handle collision response
+                const normal = earliestCollision.normal;
+                const { restitution, friction } = getCollisionProperties(world, body, collidingBody);
+                
+                // Create collision event
+                const relativeVel = body.velocity.clone().sub(collidingBody.velocity || new Vec3());
+                const normalVel = Math.abs(normal.dot(relativeVel));
+                const contact = new Contact(body, collidingBody, normal.clone(), normalVel);
+                const event = { body: collidingBody, contact };
+                
+                // Trigger collision handlers
+                if (body._collideHandlers) {
+                  body._collideHandlers.forEach(handler => handler(event));
+                }
+                if (collidingBody._collideHandlers) {
+                  const reverseContact = new Contact(collidingBody, body, normal.clone().scale(-1), normalVel);
+                  collidingBody._collideHandlers.forEach(handler => handler({ body, contact: reverseContact }));
+                }
+                
+                // Handle collision response based on body types
+                if (body.shape.type === 'Sphere' && collidingBody.shape.type === 'Sphere') {
+                  handleBallCollision(body, collidingBody, normal, restitution);
+                } else {
+                  // Handle other collision types
+                  if (collidingBody.mass === 0) {
+                    // Collision with static body
+                    const normalVel = normal.dot(relativeVel);
+                    const j = -(1 + restitution) * normalVel;
+                    
+                    // Apply normal impulse
+                    const impulse = normal.clone().scale(j);
+                    body.velocity.add(impulse);
+                    
+                    // Apply friction
+                    if (friction > 0) {
+                      // Calculate tangential velocity
+                      const tangent = relativeVel.clone().sub(normal.clone().scale(normalVel));
+                      const tangentMag = tangent.length();
+                      
+                      if (tangentMag > 0) {
+                        tangent.scale(1/tangentMag); // Normalize
+                        const jt = -tangentMag * friction;
+                        body.velocity.add(tangent.scale(jt));
+                      }
+                    }
+                  } else {
+                    // Elastic collision between dynamic bodies
+                    const totalMass = body.mass + collidingBody.mass;
+                    const normalVel = normal.dot(relativeVel);
+                    const j = -(1 + restitution) * normalVel / totalMass;
+                    
+                    // Apply normal impulse
+                    const impulse = normal.clone().scale(j);
+                    body.velocity.add(impulse.clone().scale(collidingBody.mass));
+                    collidingBody.velocity.sub(impulse.clone().scale(body.mass));
+                    
+                    // Apply friction
+                    if (friction > 0) {
+                      // Calculate tangential velocity
+                      const tangent = relativeVel.clone().sub(normal.clone().scale(normalVel));
+                      const tangentMag = tangent.length();
+                      
+                      if (tangentMag > 0) {
+                        tangent.scale(1/tangentMag); // Normalize
+                        const jt = -tangentMag * friction / totalMass;
+                        const frictionImpulse = tangent.scale(jt);
+                        
+                        body.velocity.add(frictionImpulse.clone().scale(collidingBody.mass));
+                        collidingBody.velocity.sub(frictionImpulse.clone().scale(body.mass));
+                      }
                     }
                   }
                 }
+                
+                // Move remaining time
+                const remainingTime = dt - t;
+                if (remainingTime > 0) {
+                  body.position.x += body.velocity.x * remainingTime;
+                  body.position.y += body.velocity.y * remainingTime;
+                  body.position.z += body.velocity.z * remainingTime;
+                }
+              } else {
+                // No collision, move full step
+                body.position.x += body.velocity.x * dt;
+                body.position.y += body.velocity.y * dt;
+                body.position.z += body.velocity.z * dt;
               }
-            });
-          }
-        });
-      }),
-      solver: {
-        iterations: 10,
-        tolerance: 0.001
-      },
-      defaultContactMaterial: {
-        contactEquationStiffness: 1e7,
-        contactEquationRelaxation: 4
-      },
-      addContactMaterial: vi.fn(),
-      gravity: new Vec3(0, -9.82, 0)
-    };
-    return world;
-  }),
-  Body: vi.fn().mockImplementation((options = {}) => ({
-    position: { 
-      x: options.position?.x || 0, 
-      y: options.position?.y || 0, 
-      z: options.position?.z || 0,
-      copy: vi.fn(),
-      distanceTo: vi.fn((other) => {
-        const dx = this.position.x - other.x;
-        const dy = this.position.y - other.y;
-        const dz = this.position.z - other.z;
-        return Math.sqrt(dx*dx + dy*dy + dz*dz);
-      })
-    },
-    velocity: { 
-      x: options.velocity?.x || 0, 
-      y: options.velocity?.y || 0, 
-      z: options.velocity?.z || 0,
-      set: vi.fn((x, y, z) => {
-        this.velocity.x = x;
-        this.velocity.y = y;
-        this.velocity.z = z;
-      })
-    },
-    quaternion: { 
-      copy: vi.fn(),
-      setFromAxisAngle: vi.fn(),
-      setFromEuler: vi.fn()
-    },
-    addEventListener: vi.fn(),
-    addShape: vi.fn(),
-    mass: options.mass || 0,
-    shape: options.shape || null,
-    userData: options.userData || {}
-  })),
-  Material: vi.fn().mockImplementation((props = {}) => ({
-    friction: props.friction || 0,
-    restitution: props.restitution || 0,
-    ...props
-  })),
-  ContactMaterial: vi.fn().mockImplementation((mat1, mat2, props = {}) => ({
-    friction: props.friction || 0.3,
-    restitution: props.restitution || 0.3,
-    materials: [mat1, mat2]
-  })),
-  Vec3,
-  Box: vi.fn().mockImplementation((halfExtents) => ({
-    halfExtents: { x: halfExtents.x, y: halfExtents.y, z: halfExtents.z },
-    type: 'Box'
-  })),
-  Sphere: vi.fn().mockImplementation((radius) => ({
-    radius,
-    type: 'Sphere'
-  }))
-};
 
-vi.mock('cannon-es', () => CANNON);
+              // Apply damping
+              const damping = Math.pow(1 - body.linearDamping, dt);
+              body.velocity.x *= damping;
+              body.velocity.y *= damping;
+              body.velocity.z *= damping;
+
+              if (body.angularVelocity) {
+                const angularDamping = Math.pow(1 - body.angularDamping, dt);
+                body.angularVelocity.x *= angularDamping;
+                body.angularVelocity.y *= angularDamping;
+                body.angularVelocity.z *= angularDamping;
+              }
+              
+              // Check energy conservation
+              const finalEnergy = getKineticEnergy(body);
+              const energyDiff = Math.abs(finalEnergy - initialEnergy);
+              const maxEnergyChange = Math.abs(initialEnergy * 0.1); // Allow 10% energy change
+              
+              if (energyDiff > maxEnergyChange && !earliestCollision) {
+                // Energy changed too much without collision, restore velocity
+                const scale = Math.sqrt(initialEnergy / (finalEnergy || 1e-10));
+                body.velocity.scale(scale);
+              }
+            }
+          });
+        }),
+      };
+      return world;
+    }),
+    Body: vi.fn((options = {}) => ({
+      position: new Vec3(
+        options.position?.x || 0,
+        options.position?.y || 0,
+        options.position?.z || 0
+      ),
+      velocity: new Vec3(
+        options.velocity?.x || 0,
+        options.velocity?.y || 0,
+        options.velocity?.z || 0
+      ),
+      angularVelocity: new Vec3(0, 0, 0),
+      quaternion: new Quaternion(),
+      mass: options.mass || 0,
+      shape: options.shape,
+      material: options.material,
+      linearDamping: options.linearDamping || 0.01,
+      angularDamping: options.angularDamping || 0.01,
+      _collideHandlers: [],
+    })),
+    Material: vi.fn((name) => ({
+      name,
+      friction: 0.3,
+      restitution: 0.3
+    })),
+    ContactMaterial: vi.fn((materialA, materialB, options = {}) => ({
+      materials: [materialA, materialB],
+      friction: options.friction || 0.3,
+      restitution: options.restitution || 0.3,
+      contactEquationStiffness: options.contactEquationStiffness || 1e7,
+      contactEquationRelaxation: options.contactEquationRelaxation || 3,
+      frictionEquationStiffness: options.frictionEquationStiffness || 1e7
+    })),
+    Sphere: vi.fn((radius) => ({
+      radius,
+      type: 'Sphere'
+    })),
+    Box: vi.fn((halfExtents) => ({
+      halfExtents,
+      type: 'Box'
+    })),
+    Plane: vi.fn(() => ({
+      type: 'Plane'
+    })),
+  };
+});
+
+// Mock window.matchMedia
+Object.defineProperty(window, 'matchMedia', {
+  writable: true,
+  value: vi.fn().mockImplementation(query => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  })),
+});
 
 // Mock Tone.js
-vi.mock('tone', () => {
-  return {
+vi.mock('tone', () => ({
+  default: {
     start: vi.fn(),
     context: {
+      state: 'suspended',
       resume: vi.fn(),
-      state: 'running'
     },
     Transport: {
-      start: vi.fn(),
-      stop: vi.fn(),
-      clear: vi.fn(),
-      scheduleRepeat: vi.fn(),
       bpm: { value: 120 }
-    },
-    now: vi.fn(() => 0)
-  };
-}); 
+    }
+  }
+})); 

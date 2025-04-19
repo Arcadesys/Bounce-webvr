@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import * as Tone from 'tone';
+import { registerBeam, unregisterBeam } from '../src/physics';
 
 export class SceneManager {
   constructor(canvas) {
@@ -13,6 +14,8 @@ export class SceneManager {
     this.mouse = new THREE.Vector2();
     this.raycaster = new THREE.Raycaster();
     this.drawingPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+    this.wallCounter = 0; // Counter for generating unique wall IDs
+    this.onWallsUpdate = null;
     
     // Initialize everything synchronously to avoid race conditions
     this.initScene();
@@ -205,9 +208,53 @@ export class SceneManager {
     console.log('Ball created:', { position: sphereBody.position });
   }
 
-  createWall(start, end) {
-    // TODO: Implement wall creation
-    console.log('Creating wall from', start, 'to', end);
+  createWall(startPoint, endPoint) {
+    const wallId = `wall-${this.wallCounter++}`;
+    const wall = {
+      id: wallId,
+      mesh: null,
+      body: null,
+      voice: this.wallCounter % 2 === 0 ? 'A' : 'B' // Alternate between voices
+    };
+
+    // Calculate wall dimensions and position
+    const direction = new THREE.Vector3().subVectors(endPoint, startPoint);
+    const length = direction.length();
+    const center = new THREE.Vector3().addVectors(startPoint, endPoint).multiplyScalar(0.5);
+
+    // Create mesh
+    const geometry = new THREE.BoxGeometry(length, 0.2, 0.2);
+    const material = new THREE.MeshPhongMaterial({ color: 0x808080 });
+    wall.mesh = new THREE.Mesh(geometry, material);
+    wall.mesh.position.copy(center);
+    wall.mesh.lookAt(endPoint);
+    this.scene.add(wall.mesh);
+
+    // Create physics body
+    wall.body = createWallBody(length, center, direction);
+    this.world.addBody(wall.body);
+
+    // Register with physics system
+    registerBeam(wallId, wall.body, wall.voice);
+
+    // Add to walls array and notify
+    this.walls.push(wall);
+    if (this.onWallsUpdate) {
+      this.onWallsUpdate([...this.walls]);
+    }
+
+    return wall;
+  }
+
+  updateWallVoice(wallId, voice) {
+    const wall = this.walls.find(w => w.id === wallId);
+    if (wall) {
+      wall.voice = voice;
+      registerBeam(wallId, wall.body, voice);
+      if (this.onWallsUpdate) {
+        this.onWallsUpdate([...this.walls]);
+      }
+    }
   }
 
   createDispenser(position) {
@@ -247,6 +294,14 @@ export class SceneManager {
 
     // Clean up Three.js resources
     this.renderer.dispose();
+    
+    // Unregister all walls
+    this.walls.forEach(wall => {
+      this.scene.remove(wall.mesh);
+      this.world.removeBody(wall.body);
+      unregisterBeam(wall.id);
+    });
+    this.walls = [];
     
     // Clean up physics world
     this.world.bodies.forEach(body => {

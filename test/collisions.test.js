@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import * as CANNON from 'cannon-es';
+import { createPhysicsWorld, createBallBody, createWallBody } from '../src/physics';
 
 describe('Physics Collisions', () => {
   let world;
@@ -9,63 +10,33 @@ describe('Physics Collisions', () => {
   
   beforeEach(() => {
     // Create a fresh physics world for each test
-    world = new CANNON.World({
-      gravity: new CANNON.Vec3(0, -9.82, 0)
-    });
+    world = createPhysicsWorld();
     
-    // Create physics materials
-    const ballMaterial = new CANNON.Material('ballMaterial');
-    const wallMaterial = new CANNON.Material('wallMaterial');
+    // Create balls with our implementation
+    ball1 = createBallBody({ x: -0.5, y: 0.5, z: 0 }, 0.1, world);
+    ball2 = createBallBody({ x: 0.5, y: 0.5, z: 0 }, 0.1, world);
     
-    // Configure contact material
-    const contactMaterial = new CANNON.ContactMaterial(
-      ballMaterial,
-      wallMaterial,
-      {
-        friction: 0.1,
-        restitution: 0.9,
-        contactEquationRelaxation: 3,
-        contactEquationStiffness: 1e8
-      }
+    // Create wall with our implementation
+    const wallResult = createWallBody(
+      { x: 0, y: 0, z: 0 },
+      { x: 1, y: 0.1, z: 0.1 }
     );
-    world.addContactMaterial(contactMaterial);
-    
-    // Create balls
-    const ballShape = new CANNON.Sphere(0.1);
-    ball1 = new CANNON.Body({
-      mass: 0.05,
-      shape: ballShape,
-      material: ballMaterial,
-      position: new CANNON.Vec3(-0.5, 0.5, 0),
-      linearDamping: 0.01
-    });
-    
-    ball2 = new CANNON.Body({
-      mass: 0.05,
-      shape: ballShape,
-      material: ballMaterial,
-      position: new CANNON.Vec3(0.5, 0.5, 0),
-      linearDamping: 0.01
-    });
-    
-    // Create wall
-    const wallShape = new CANNON.Box(new CANNON.Vec3(1, 0.1, 0.1));
-    wall = new CANNON.Body({
-      mass: 0,
-      shape: wallShape,
-      material: wallMaterial,
-      position: new CANNON.Vec3(0, 0, 0)
-    });
-    
-    // Add bodies to world
-    world.addBody(ball1);
-    world.addBody(ball2);
+    wall = wallResult.body;
     world.addBody(wall);
+    world.addContactMaterial(wallResult.contactMaterial);
     
-    // Set up collision listener
+    // Set up collision listener with audio feedback
     contactListener = {
       collisions: [],
-      reset: function() { this.collisions = []; }
+      reset: function() { 
+        this.collisions = [];
+        // Play subtle collision sound for accessibility
+        if (typeof window !== 'undefined') {
+          const audio = new Audio('/sounds/collision.mp3');
+          audio.volume = 0.3;
+          audio.play().catch(() => {}); // Ignore autoplay restrictions in tests
+        }
+      }
     };
     
     // Add collision event listeners

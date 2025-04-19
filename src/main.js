@@ -1,23 +1,52 @@
+// Add initialization logging
+console.log('🚀 Starting Bounce WebVR initialization...');
+
+// Log environment info
+console.log('📝 Environment:', {
+    userAgent: navigator.userAgent,
+    webgl: !!window.WebGLRenderingContext,
+    webvr: !!window.isSecureContext
+});
+
+// Import dependencies
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import * as Tone from 'tone';
-import { mapLengthToNote, getNoteColor, playNoteForLength } from '../utils/midiSequencer';
-import { playBounceSound } from '../utils/synthManager';
+import { mapLengthToNote, getNoteColor, playNoteForLength } from './utils/midiSequencer.js';
+import { playBounceSound } from './utils/synthManager.js';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+
+console.log('✅ Dependencies imported successfully');
 
 // Sound toggle
 let soundEnabled = true;
 const soundToggle = document.getElementById('sound-toggle');
 
-// Initialize audio on user interaction
-function initAudio() {
-  // Ensure Tone.js is started
-  if (Tone.context.state !== 'running') {
-    Tone.start();
-  }
+// Initialize audio context
+let audioInitialized = false;
+
+async function initAudio() {
+  if (audioInitialized) return;
   
-  // Use the global playBounceSound function from synthManager
-  window.playBounceSound = playBounceSound;
+  try {
+    await Tone.start();
+    console.log('Audio context started');
+    audioInitialized = true;
+  } catch (error) {
+    console.error('Failed to start audio context:', error);
+  }
 }
+
+// Initialize audio on first user interaction
+window.addEventListener('click', async () => {
+  await initAudio();
+}, { once: true });
+
+window.addEventListener('touchstart', async () => {
+  await initAudio();
+}, { once: true });
 
 // Toggle sound
 soundToggle?.addEventListener('click', () => {
@@ -32,78 +61,73 @@ soundToggle?.addEventListener('click', () => {
 });
 
 // Scene setup
-export const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x0a0a2a); // Deep blue-black background
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x000000); // Pure black background for maximum contrast
 
-// Create a subtle glow plane that matches our physics plane
-const glowGeometry = new THREE.PlaneGeometry(20, 20); // Larger than physics plane for full coverage
-const glowMaterial = new THREE.MeshBasicMaterial({
-  color: 0x1a1a4a,
-  transparent: true,
-  opacity: 0.3,
-  side: THREE.DoubleSide
+// Get canvas element
+const canvas = document.getElementById('bounceCanvas');
+if (!canvas) {
+  console.error('Canvas element not found!');
+  throw new Error('Canvas element not found!');
+}
+
+// Set up camera first
+const activeCamera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+activeCamera.position.set(0, 5, 10); // Adjusted for better view
+activeCamera.lookAt(0, 0, 0);
+
+// Set up renderer
+const renderer = new THREE.WebGLRenderer({ 
+  canvas: canvas,
+  antialias: true,
+  alpha: true
 });
-const glowPlane = new THREE.Mesh(glowGeometry, glowMaterial);
-glowPlane.rotation.x = -Math.PI / 2;
-glowPlane.position.y = -2;
-scene.add(glowPlane);
-
-// Camera setup
-const orthographicCamera = new THREE.OrthographicCamera(
-  window.innerWidth / -100,
-  window.innerWidth / 100,
-  window.innerHeight / 100,
-  window.innerHeight / -100,
-  0.1,
-  1000
-);
-
-const perspectiveCamera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-
-// Set up orthographic camera position for good 2D view
-const TILT_ANGLE = (2 * Math.PI) / 180; // 2 degrees in radians
-orthographicCamera.position.set(
-  Math.sin(TILT_ANGLE) * 5, // Slight X offset for tilt
-  0.2,                      // Barely above the plane
-  5                         // Distance from center
-);
-orthographicCamera.lookAt(0, 0, 0);
-
-// Adjust the up vector slightly for consistent orientation
-orthographicCamera.up.set(0, 1, 0);
-
-// Default to orthographic camera
-let activeCamera = orthographicCamera;
-
-// Renderer setup
-const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(window.devicePixelRatio);
 renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body?.appendChild(renderer.domElement);
 
-// Lighting
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.2); // Reduced ambient light
+// Create a subtle grid plane for cyberpunk effect
+const gridGeometry = new THREE.PlaneGeometry(30, 30, 30, 30);
+const gridMaterial = new THREE.LineBasicMaterial({ 
+  color: 0x00ff00,
+  transparent: true,
+  opacity: 0.2
+});
+const grid = new THREE.LineSegments(
+  new THREE.EdgesGeometry(gridGeometry),
+  gridMaterial
+);
+grid.rotation.x = -Math.PI / 2;
+grid.position.y = -2;
+scene.add(grid);
+
+// Lighting setup for cyberpunk effect
+const ambientLight = new THREE.AmbientLight(0x000000, 0.1); // Very dark ambient
 scene.add(ambientLight);
 
-const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0); // Increased directional light
-directionalLight.position.set(10, 20, 15);
-directionalLight.castShadow = true;
-directionalLight.shadow.mapSize.width = 2048;
-directionalLight.shadow.mapSize.height = 2048;
-scene.add(directionalLight);
+// Neon lights
+const neonLight1 = new THREE.PointLight(0xff00ff, 2, 10); // Magenta
+neonLight1.position.set(-5, 3, -5);
+scene.add(neonLight1);
 
-// Add a subtle point light near the camera for better visibility
-const pointLight = new THREE.PointLight(0xffffff, 0.5, 50);
-pointLight.position.copy(activeCamera.position);
-scene.add(pointLight);
+const neonLight2 = new THREE.PointLight(0x00ffff, 2, 10); // Cyan
+neonLight2.position.set(5, 3, 5);
+scene.add(neonLight2);
+
+// Camera-following light
+const followLight = new THREE.PointLight(0xffffff, 1.0, 15);
+followLight.position.copy(activeCamera.position);
+scene.add(followLight);
 
 // Update point light position when camera moves
 function updatePointLight() {
-  pointLight.position.copy(activeCamera.position);
+  followLight.position.copy(activeCamera.position);
 }
 
 // Physics world
-export const world = new CANNON.World({
+const world = new CANNON.World({
   gravity: new CANNON.Vec3(0, -9.82, 0)
 });
 
@@ -181,7 +205,7 @@ function updateModeIndicator(indicator) {
 const modeIndicator = createModeIndicator();
 
 // Create a ball at the specified position
-export function createBall(position) {
+function createBall(position) {
   const radius = 0.2;
   
   // Physical body
@@ -229,10 +253,10 @@ export function createBall(position) {
   
   // Visual ball
   const ballGeometry = new THREE.SphereGeometry(radius, 32, 32);
-  const ballMaterial = new THREE.MeshStandardMaterial({ 
-    color: Math.random() * 0xffffff,
-    roughness: 0.4,
-    metalness: 0.3
+  const ballMaterial = new THREE.MeshBasicMaterial({ 
+    color: Math.random() > 0.5 ? 0xff00ff : 0x00ffff, // Alternate between magenta and cyan
+    transparent: true,
+    opacity: 0.9
   });
   const ballMesh = new THREE.Mesh(ballGeometry, ballMaterial);
   ballMesh.castShadow = true;
@@ -242,8 +266,11 @@ export function createBall(position) {
   return { body: ballBody, mesh: ballMesh };
 }
 
-// Create a wall between two points - completely rebuilt for simplicity
-export function createWall(start, end) {
+// Update createWall function to ensure audio is initialized
+async function createWall(start, end) {
+  // Ensure audio is initialized before creating wall
+  await initAudio();
+  
   // Get length for note mapping
   const length = start.distanceTo(end);
   
@@ -252,7 +279,6 @@ export function createWall(start, end) {
   const noteColor = getNoteColor(note);
   
   // Create a simple rectangular wall using EdgesGeometry
-  // First, create a line between the two points
   const points = [
     new THREE.Vector3(start.x, start.y, start.z),
     new THREE.Vector3(end.x, end.y, end.z)
@@ -266,10 +292,10 @@ export function createWall(start, end) {
   const wallGeometry = new THREE.TubeGeometry(path, 1, wallHeight/2, 8, false);
   
   // Create material
-  const wallMaterial = new THREE.MeshStandardMaterial({ 
-    color: noteColor,
-    roughness: 0.8,
-    metalness: 0.2
+  const wallMaterial = new THREE.MeshBasicMaterial({ 
+    color: 0x00ff00, // Neon green
+    transparent: true,
+    opacity: 0.9
   });
   
   // Create mesh
@@ -279,14 +305,14 @@ export function createWall(start, end) {
   scene.add(wallMesh);
   walls.push(wallMesh);
   
-  // Create a simple physics body - just a box between the points
+  // Create physics body
   const center = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
   const direction = new THREE.Vector3().subVectors(end, start);
   const angle = Math.atan2(direction.y, direction.x);
   
   const wallShape = new CANNON.Box(new CANNON.Vec3(length/2, wallHeight/2, wallHeight/2));
   const wallBody = new CANNON.Body({
-    mass: 0, // Static body
+    mass: 0,
     position: new CANNON.Vec3(center.x, center.y, center.z),
     shape: wallShape,
   });
@@ -338,7 +364,7 @@ function updateTempWall() {
   const tempWallGeometry = new THREE.TubeGeometry(path, 1, wallHeight/2, 8, false);
   
   // Create material
-  const tempWallMaterial = new THREE.MeshStandardMaterial({ 
+  const tempWallMaterial = new THREE.MeshBasicMaterial({ 
     color: noteColor,
     transparent: true,
     opacity: 0.7,
@@ -409,6 +435,7 @@ function onMouseMove(event) {
   }
 }
 
+// Update the onMouseUp handler to use async createWall
 function onMouseUp(event) {
   if (isDrawing) {
     // Get the final mouse position
@@ -423,7 +450,7 @@ function onMouseUp(event) {
     
     // Only create a wall if it has some length
     if (wallStart.distanceTo(wallEnd) > 0.2) {
-      createWall(wallStart, wallEnd);
+      createWall(wallStart, wallEnd).catch(console.error);
     }
     
     // Remove temporary wall
@@ -443,18 +470,13 @@ window.addEventListener('mouseup', onMouseUp);
 
 // Handle window resize
 window.addEventListener('resize', () => {
-  if (activeCamera === orthographicCamera) {
-    // Update orthographic camera frustum
-    orthographicCamera.left = window.innerWidth / -100;
-    orthographicCamera.right = window.innerWidth / 100;
-    orthographicCamera.top = window.innerHeight / 100;
-    orthographicCamera.bottom = window.innerHeight / -100;
-  } else {
+  if (activeCamera === activeCamera) {
     // Update perspective camera for VR
-    perspectiveCamera.aspect = window.innerWidth / window.innerHeight;
+    activeCamera.aspect = window.innerWidth / window.innerHeight;
   }
   activeCamera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
 });
 
 // Allow drawing or dropping a ball with touch on mobile
@@ -512,7 +534,7 @@ window.addEventListener('touchend', (event) => {
     
     // Only create a wall if it has some length
     if (wallStart.distanceTo(wallEnd) > 0.2) {
-      createWall(wallStart, wallEnd);
+      createWall(wallStart, wallEnd).catch(console.error);
     }
     
     // Remove temporary wall
@@ -524,6 +546,19 @@ window.addEventListener('touchend', (event) => {
     isDrawing = false;
   }
 });
+
+// After renderer setup
+const composer = new EffectComposer(renderer);
+const renderPass = new RenderPass(scene, activeCamera);
+composer.addPass(renderPass);
+
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  1.5,  // strength
+  0.4,  // radius
+  0.85  // threshold
+);
+composer.addPass(bloomPass);
 
 // Animation loop
 function animate() {
@@ -543,9 +578,12 @@ function animate() {
     }
   });
   
-  renderer.render(scene, activeCamera);
+  composer.render();
 }
 
-animate(); // Test comment
+// Start animation
+animate();
+
+console.log('✨ Application initialized successfully!');
 
 

@@ -1,0 +1,142 @@
+/* Loading screen */
+.loading-screen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: #000011;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    padding-top: 10vh;
+    color: white;
+    font-family: system-ui, -apple-system, sans-serif;
+    z-index: 2000;
+    transition: opacity 0.5s ease;
+}
+
+.loading-spinner {
+    width: 50px;
+    height: 50px;
+    position: relative;
+    margin-bottom: 2rem;
+}
+
+.loading-spinner::before {
+    content: '';
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    background: radial-gradient(circle, #4CAF50 0%, #45a049 100%);
+    animation: pulse 1s ease-in-out infinite alternate;
+}
+
+@keyframes pulse {
+    from { transform: scale(0.8); opacity: 0.5; }
+    to { transform: scale(1.2); opacity: 1; }
+}
+
+.loading-screen p {
+    font-size: 1.2rem;
+    margin: 0;
+}
+
+.loading-screen button {
+    margin-top: 1rem;
+    padding: 0.5rem 1rem;
+    background: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: background 0.2s;
+}
+
+.loading-screen button:hover {
+    background: #45a049;
+}
+
+/* Loading logs */
+.loading-logs {
+    margin-top: 2rem;
+    width: 80%;
+    max-width: 600px;
+    max-height: 50vh;
+    overflow-y: auto;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 8px;
+    padding: 1rem;
+    font-family: monospace;
+    font-size: 0.9rem;
+    line-height: 1.4;
+}
+
+.loading-logs .log-entry {
+    margin-bottom: 0.5rem;
+    padding-left: 20px;
+    position: relative;
+}
+
+.loading-logs .log-entry::before {
+    content: '>';
+    position: absolute;
+    left: 0;
+    color: #4CAF50;
+}
+
+.loading-logs .log-entry.error {
+    color: #ff4444;
+}
+
+.loading-logs .log-entry.warn {
+    color: #ffaa00;
+}
+
+/* Scene container */
+#scene-container {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* Canvas */
+canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+/* Base styles */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    overflow: hidden;
+    background: #000011;
+}
+
+/* Scrollbar styles for the logs */
+.loading-logs::-webkit-scrollbar {
+    width: 8px;
+}
+
+.loading-logs::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+}
+
+.loading-logs::-webkit-scrollbar-thumb {
+    background: rgba(76, 175, 80, 0.5);
+    border-radius: 4px;
+}
+
+.loading-logs::-webkit-scrollbar-thumb:hover {
+    background: rgba(76, 175, 80, 0.7);
+} 
