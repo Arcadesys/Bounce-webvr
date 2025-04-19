@@ -5,13 +5,35 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="Bounce WebVR - An accessible musical physics playground">
     <title>Bounce WebVR</title>
-    <!-- Preload critical assets -->
-    <link rel="preload" href="/js/main.js" as="script">
-    <link rel="preload" href="/js/style.css" as="style">
+    
+    <!-- Load critical resources with proper attributes -->
+    <script type="module" src="/js/main.js" crossorigin="anonymous" async></script>
+    <link rel="stylesheet" href="/js/style.css" crossorigin="anonymous">
+    
     <style>
+        /* Inline critical styles */
         body {
             margin: 0;
             overflow: hidden;
+            background: #000011;
+        }
+        #app {
+            width: 100vw;
+            height: 100vh;
+        }
+        .loading-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: #000011;
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: Arial, sans-serif;
+            z-index: 1000;
         }
         canvas {
             width: 100vw;
@@ -72,35 +94,37 @@
     </style>
 </head>
 <body>
-    <div id="note-display" role="status" aria-live="polite">
-        <span>Current Note: </span>
-        <strong id="current-note"></strong>
-    </div>
-    <button id="settings-button" aria-label="Toggle settings panel">⚙️ Settings</button>
-    <div id="settings-panel">
-        <div class="settings-group">
-            <label for="bounciness">Bounciness</label>
-            <input type="range" id="bounciness" min="0" max="1" step="0.1" value="0.7">
-        </div>
-        <div class="settings-group">
-            <label for="tempo">Tempo (BPM)</label>
-            <input type="range" id="tempo" min="60" max="200" step="1" value="120">
-        </div>
-        <div class="settings-group">
-            <label for="instrument">Instrument</label>
-            <select id="instrument">
-                <option value="marimba">Marimba</option>
-                <option value="piano">Piano</option>
-                <option value="synth">Synth</option>
-            </select>
-        </div>
-    </div>
     <div id="app">
-        <!-- Vue app will mount here -->
+        <!-- Loading screen -->
+        <div class="loading-screen">
+            <p>Loading Bounce WebVR...</p>
+        </div>
+        <div id="note-display" role="status" aria-live="polite">
+            <span>Current Note: </span>
+            <strong id="current-note"></strong>
+        </div>
+        <button id="settings-button" aria-label="Toggle settings panel">⚙️ Settings</button>
+        <div id="settings-panel">
+            <div class="settings-group">
+                <label for="bounciness">Bounciness</label>
+                <input type="range" id="bounciness" min="0" max="1" step="0.1" value="0.7">
+            </div>
+            <div class="settings-group">
+                <label for="tempo">Tempo (BPM)</label>
+                <input type="range" id="tempo" min="60" max="200" step="1" value="120">
+            </div>
+            <div class="settings-group">
+                <label for="instrument">Instrument</label>
+                <select id="instrument">
+                    <option value="marimba">Marimba</option>
+                    <option value="piano">Piano</option>
+                    <option value="synth">Synth</option>
+                </select>
+            </div>
+        </div>
         <noscript>
             <p>JavaScript is required to run this application. Please enable JavaScript to continue.</p>
         </noscript>
     </div>
-    <script type="module" src="/js/main.js"></script>
 </body>
 </html> 

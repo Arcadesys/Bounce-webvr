@@ -49,68 +49,87 @@ let currentInstrumentType = localStorage.getItem('currentInstrument') || 'marimb
 /**
  * Initialize the synth with settings
  * @param {Object} settings - Synth settings (optional)
- * @returns {Object} The synth instance
+ * @returns {Promise<Object>} The synth instance
  */
-export function initSynth(settings = null) {
+export async function initSynth(settings = null) {
+  // Ensure audio context is running
+  if (Tone.context.state !== 'running') {
+    try {
+      await Tone.start();
+    } catch (error) {
+      console.warn('Error starting Tone.js:', error);
+    }
+  }
+
   // Dispose of existing synth if any
   if (synthInstance) {
     synthInstance.dispose();
   }
-  
+
   // Use provided settings or load from localStorage or use defaults
-  let synthSettings = settings;
-  
-  if (!synthSettings) {
-    // Try to load saved settings
-    const savedSettings = localStorage.getItem('customSynthSettings');
-    
-    if (savedSettings) {
-      synthSettings = JSON.parse(savedSettings);
-    } else {
-      // Try to load current instrument
-      const currentInstrument = localStorage.getItem('currentInstrument');
-      
-      if (currentInstrument && INSTRUMENT_PREFABS[currentInstrument]) {
-        synthSettings = INSTRUMENT_PREFABS[currentInstrument];
-      } else {
-        synthSettings = DEFAULT_SYNTH_SETTINGS;
-      }
-    }
-  }
-  
+  let synthSettings = settings || loadSynthSettings();
+
   // Create new synth instance
   synthInstance = new Tone.Synth(synthSettings).toDestination();
-  
+
   // Initialize bounce synth if it doesn't exist
   if (!bounceSynthInstance) {
-    initBounceSynth();
+    await initBounceSynth();
   }
-  
+
   return synthInstance;
 }
 
 /**
  * Initialize a dedicated synth for bounce sounds
  */
-function initBounceSynth() {
+async function initBounceSynth() {
+  // Ensure audio context is running
+  if (Tone.context.state !== 'running') {
+    try {
+      await Tone.start();
+    } catch (error) {
+      console.warn('Error starting Tone.js:', error);
+    }
+  }
+
   // Dispose of existing bounce synth if any
   if (bounceSynthInstance) {
     bounceSynthInstance.dispose();
   }
-  
+
   // Create a simpler synth for bounce sounds
   bounceSynthInstance = new Tone.Synth({
     oscillator: {
       type: 'sine'
     },
     envelope: {
-      attack: 0.001,  // Almost instant attack
-      decay: 0.05,    // Very short decay
-      sustain: 0.01,  // Basically no sustain
-      release: 0.05   // Quick release
+      attack: 0.001,
+      decay: 0.05,
+      sustain: 0.01,
+      release: 0.05
     },
-    volume: -20 // Much quieter than the musical synth
+    volume: -20
   }).toDestination();
+}
+
+// Helper function to load synth settings
+function loadSynthSettings() {
+  // Try to load saved settings
+  const savedSettings = localStorage.getItem('customSynthSettings');
+  
+  if (savedSettings) {
+    return JSON.parse(savedSettings);
+  }
+  
+  // Try to load current instrument
+  const currentInstrument = localStorage.getItem('currentInstrument');
+  
+  if (currentInstrument && INSTRUMENT_PREFABS[currentInstrument]) {
+    return INSTRUMENT_PREFABS[currentInstrument];
+  }
+  
+  return DEFAULT_SYNTH_SETTINGS;
 }
 
 /**
