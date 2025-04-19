@@ -36,8 +36,31 @@ export const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87CEEB); // Sky blue background
 
 // Camera setup
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-camera.position.z = 5;
+const orthographicCamera = new THREE.OrthographicCamera(
+  window.innerWidth / -100,
+  window.innerWidth / 100,
+  window.innerHeight / 100,
+  window.innerHeight / -100,
+  0.1,
+  1000
+);
+
+const perspectiveCamera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+
+// Set up orthographic camera position for good 2D view
+const TILT_ANGLE = (2 * Math.PI) / 180; // 2 degrees in radians
+orthographicCamera.position.set(
+  Math.sin(TILT_ANGLE) * 5, // Slight X offset for tilt
+  0.2,                      // Barely above the plane
+  5                         // Distance from center
+);
+orthographicCamera.lookAt(0, 0, 0);
+
+// Adjust the up vector slightly for consistent orientation
+orthographicCamera.up.set(0, 1, 0);
+
+// Default to orthographic camera
+let activeCamera = orthographicCamera;
 
 // Renderer setup
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -334,7 +357,7 @@ function onMouseDown(event) {
   mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
   mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
   
-  raycaster.setFromCamera(mouse, camera);
+  raycaster.setFromCamera(mouse, activeCamera);
   
   // Toggle draw mode with Shift key
   if (event.shiftKey) {
@@ -367,7 +390,7 @@ function onMouseMove(event) {
   mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
   
   if (isDrawing) {
-    raycaster.setFromCamera(mouse, camera);
+    raycaster.setFromCamera(mouse, activeCamera);
     const intersection = new THREE.Vector3();
     raycaster.ray.intersectPlane(drawingPlane, intersection);
     
@@ -382,7 +405,7 @@ function onMouseUp(event) {
     // Get the final mouse position
     mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
     mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-    raycaster.setFromCamera(mouse, camera);
+    raycaster.setFromCamera(mouse, activeCamera);
     
     // Set the SECOND endpoint exactly at release position
     const intersection = new THREE.Vector3();
@@ -411,8 +434,17 @@ window.addEventListener('mouseup', onMouseUp);
 
 // Handle window resize
 window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
+  if (activeCamera === orthographicCamera) {
+    // Update orthographic camera frustum
+    orthographicCamera.left = window.innerWidth / -100;
+    orthographicCamera.right = window.innerWidth / 100;
+    orthographicCamera.top = window.innerHeight / 100;
+    orthographicCamera.bottom = window.innerHeight / -100;
+  } else {
+    // Update perspective camera for VR
+    perspectiveCamera.aspect = window.innerWidth / window.innerHeight;
+  }
+  activeCamera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
@@ -428,7 +460,7 @@ window.addEventListener('touchstart', (event) => {
   mouse.x = (touch.clientX / window.innerWidth) * 2 - 1;
   mouse.y = -(touch.clientY / window.innerHeight) * 2 + 1;
   
-  raycaster.setFromCamera(mouse, camera);
+  raycaster.setFromCamera(mouse, activeCamera);
   const intersection = new THREE.Vector3();
   raycaster.ray.intersectPlane(drawingPlane, intersection);
   
@@ -453,7 +485,7 @@ window.addEventListener('touchmove', (event) => {
     mouse.x = (touch.clientX / window.innerWidth) * 2 - 1;
     mouse.y = -(touch.clientY / window.innerHeight) * 2 + 1;
     
-    raycaster.setFromCamera(mouse, camera);
+    raycaster.setFromCamera(mouse, activeCamera);
     const intersection = new THREE.Vector3();
     raycaster.ray.intersectPlane(drawingPlane, intersection);
     
@@ -507,7 +539,7 @@ function animate() {
     }
   }
   
-  renderer.render(scene, camera);
+  renderer.render(scene, activeCamera);
 }
 
 animate(); // Test comment
