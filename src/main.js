@@ -27,15 +27,17 @@ const soundToggle = document.getElementById('sound-toggle');
 // Initialize audio context
 let audioInitialized = false;
 
-async function initAudio() {
-  if (audioInitialized) return;
+export async function initAudio() {
+  if (audioInitialized) return true;
   
   try {
     await Tone.start();
     console.log('Audio context started');
     audioInitialized = true;
+    return true;
   } catch (error) {
     console.error('Failed to start audio context:', error);
+    return false;
   }
 }
 
@@ -269,7 +271,9 @@ function createBall(position) {
 // Update createWall function to ensure audio is initialized
 async function createWall(start, end) {
   // Ensure audio is initialized before creating wall
-  await initAudio();
+  if (!audioInitialized) {
+    throw new Error('Audio context not initialized - user interaction required');
+  }
   
   // Get length for note mapping
   const length = start.distanceTo(end);
