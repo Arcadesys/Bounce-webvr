@@ -115,16 +115,20 @@ export default function BounceScene() {
       scene = new THREE.Scene();
       scene.background = new THREE.Color(0x000011); // Very dark blue-black background
       
-      // Camera setup - zoomed out for larger contraptions
+      // Camera setup - positioned higher up for waterfall creation
       camera = new THREE.PerspectiveCamera(
         75,                                        // FOV
         window.innerWidth / window.innerHeight,    // Aspect ratio
         0.1,                                       // Near clipping plane
         100                                        // Far clipping plane
       );
-      // Position the camera for a flat, mostly 2D-like view
-      camera.position.set(0, 2, 12);               // Lower height, still zoomed out
-      camera.lookAt(0, 0, 0);                      // Look at center of scene
+      // Position the camera higher up, looking down slightly
+      camera.position.set(0, 15, 12);             // Much higher Y position
+      camera.lookAt(0, 0, 0);                     // Look towards center/ground
+      
+      // Drawing plane for mouse interaction - moved higher up
+      drawingPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+      drawingPlane.translate(new THREE.Vector3(0, 10, 0)); // Move the drawing plane up
       
       // Renderer setup
       renderer = new THREE.WebGLRenderer({ 
@@ -216,24 +220,22 @@ export default function BounceScene() {
         }
       });
       
-      // Ground plane - invisible physics plane - larger for bigger play area
+      // Ground plane - moved much lower to allow for longer falls
       const groundBody = new CANNON.Body({
         type: CANNON.Body.STATIC,
         shape: new CANNON.Plane(),
         material: platformMaterial
       });
       groundBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
-      groundBody.position.y = -2;
+      groundBody.position.y = -10; // Much lower ground position
       world.addBody(groundBody);
       
-      // Create boundaries to keep balls from falling off edges
-      createBoundary(-10, -2, 20, 1, 0, Math.PI / 4);     // Left wall
-      createBoundary(10, -2, 20, 1, 0, -Math.PI / 4);     // Right wall
-      
-      // Create walls around the play area to keep balls in
-      createBoundary(-10, -4, 20, 0.5, 0, Math.PI / 2); // Left wall
-      createBoundary(10, -4, 20, 0.5, 0, Math.PI / 2);  // Right wall
-      createBoundary(0, 6, 20, 0.5, Math.PI / 2, 0);    // Top wall
+      // Create boundaries to keep balls from falling off edges - adjusted for new height
+      createBoundary(-10, -10, 40, 1, 0, Math.PI / 4);     // Left wall
+      createBoundary(10, -10, 40, 1, 0, -Math.PI / 4);     // Right wall
+      createBoundary(-10, -10, 40, 0.5, 0, Math.PI / 2);   // Left boundary
+      createBoundary(10, -10, 40, 0.5, 0, Math.PI / 2);    // Right boundary
+      createBoundary(0, 15, 20, 0.5, Math.PI / 2, 0);      // Top boundary (ceiling)
     }
     
     // Helper function to create boundary walls around the play area
@@ -741,11 +743,11 @@ export default function BounceScene() {
           balls[i].mesh.position.copy(balls[i].body.position);
           balls[i].mesh.quaternion.copy(balls[i].body.quaternion);
           
-          // Remove balls that hit the ground or fall too far
+          // Remove balls that hit the ground or fall too far - adjusted threshold
           if ((balls[i].body.userData && 
                (balls[i].body.userData.shouldRemove || 
                 (balls[i].body.userData.removeAfter && Date.now() > balls[i].body.userData.removeAfter))) || 
-              balls[i].body.position.y < -10) {
+              balls[i].body.position.y < -15) { // Lower threshold for removal
             scene.remove(balls[i].mesh);
             world.removeBody(balls[i].body);
             balls.splice(i, 1);
