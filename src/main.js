@@ -33,7 +33,20 @@ soundToggle?.addEventListener('click', () => {
 
 // Scene setup
 export const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x87CEEB); // Sky blue background
+scene.background = new THREE.Color(0x0a0a2a); // Deep blue-black background
+
+// Create a subtle glow plane that matches our physics plane
+const glowGeometry = new THREE.PlaneGeometry(20, 20); // Larger than physics plane for full coverage
+const glowMaterial = new THREE.MeshBasicMaterial({
+  color: 0x1a1a4a,
+  transparent: true,
+  opacity: 0.3,
+  side: THREE.DoubleSide
+});
+const glowPlane = new THREE.Mesh(glowGeometry, glowMaterial);
+glowPlane.rotation.x = -Math.PI / 2;
+glowPlane.position.y = -2;
+scene.add(glowPlane);
 
 // Camera setup
 const orthographicCamera = new THREE.OrthographicCamera(
@@ -69,15 +82,25 @@ renderer.shadowMap.enabled = true;
 document.body?.appendChild(renderer.domElement);
 
 // Lighting
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.2); // Reduced ambient light
 scene.add(ambientLight);
 
-const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0); // Increased directional light
 directionalLight.position.set(10, 20, 15);
 directionalLight.castShadow = true;
 directionalLight.shadow.mapSize.width = 2048;
 directionalLight.shadow.mapSize.height = 2048;
 scene.add(directionalLight);
+
+// Add a subtle point light near the camera for better visibility
+const pointLight = new THREE.PointLight(0xffffff, 0.5, 50);
+pointLight.position.copy(activeCamera.position);
+scene.add(pointLight);
+
+// Update point light position when camera moves
+function updatePointLight() {
+  pointLight.position.copy(activeCamera.position);
+}
 
 // Physics world
 export const world = new CANNON.World({
@@ -93,20 +116,6 @@ groundBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
 groundBody.position.y = -2;
 groundBody.userData = { isGround: true };
 world.addBody(groundBody);
-
-// Visible ground plane
-const groundGeometry = new THREE.PlaneGeometry(10, 10);
-const groundMaterial = new THREE.MeshStandardMaterial({ 
-  color: 0x228B22,
-  roughness: 0.7,
-  metalness: 0.1
-});
-const ground = new THREE.Mesh(groundGeometry, groundMaterial);
-ground.rotation.x = -Math.PI / 2;
-ground.position.y = -2;
-ground.receiveShadow = true;
-ground.userData = { isGround: true };
-scene.add(ground);
 
 // Container for walls
 const walls = [];
@@ -517,29 +526,26 @@ window.addEventListener('touchend', (event) => {
 });
 
 // Animation loop
-const timeStep = 1 / 60;
 function animate() {
   requestAnimationFrame(animate);
   
   // Update physics
-  world.step(timeStep);
+  world.step(1/60);
   
-  // Update visual objects to match physics
-  for (let i = 0; i < balls.length; i++) {
-    balls[i].mesh.position.copy(balls[i].body.position);
-    balls[i].mesh.quaternion.copy(balls[i].body.quaternion);
-    
-    // Remove balls that hit the ground or fall too far
-    if ((balls[i].body.userData && balls[i].body.userData.shouldRemove) || 
-        balls[i].body.position.y < -10) {
-      scene.remove(balls[i].mesh);
-      world.removeBody(balls[i].body);
-      balls.splice(i, 1);
-      i--;
+  // Update point light position
+  updatePointLight();
+  
+  // Update all meshes
+  scene.traverse((object) => {
+    if (object.userData.body) {
+      object.position.copy(object.userData.body.position);
+      object.quaternion.copy(object.userData.body.quaternion);
     }
-  }
+  });
   
   renderer.render(scene, activeCamera);
 }
 
 animate(); // Test comment
+
+

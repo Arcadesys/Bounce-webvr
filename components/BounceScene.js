@@ -113,7 +113,7 @@ export default function BounceScene() {
     function initScene() {
       // Scene setup
       scene = new THREE.Scene();
-      scene.background = new THREE.Color(0x000000); // Black background
+      scene.background = new THREE.Color(0x000011); // Very dark blue-black background
       
       // Camera setup - zoomed out for larger contraptions
       camera = new THREE.PerspectiveCamera(
@@ -127,21 +127,42 @@ export default function BounceScene() {
       camera.lookAt(0, 0, 0);                      // Look at center of scene
       
       // Renderer setup
-      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer = new THREE.WebGLRenderer({ 
+        antialias: true,
+        alpha: true 
+      });
       renderer.setSize(window.innerWidth, window.innerHeight);
       renderer.shadowMap.enabled = true;
       mountRef.current.appendChild(renderer.domElement);
       
+      // Add subtle glow plane that matches our physics plane
+      const glowGeometry = new THREE.PlaneGeometry(100, 100); // Much larger than physics plane
+      const glowMaterial = new THREE.MeshBasicMaterial({
+        color: 0x1a1a4a,
+        transparent: true,
+        opacity: 0.2,
+        side: THREE.DoubleSide
+      });
+      const glowPlane = new THREE.Mesh(glowGeometry, glowMaterial);
+      glowPlane.rotation.x = -Math.PI / 2;
+      glowPlane.position.y = -2;
+      scene.add(glowPlane);
+      
       // Lighting
-      const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.2); // Reduced ambient
       scene.add(ambientLight);
       
-      const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+      const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
       directionalLight.position.set(10, 20, 15);
       directionalLight.castShadow = true;
       directionalLight.shadow.mapSize.width = 2048;
       directionalLight.shadow.mapSize.height = 2048;
       scene.add(directionalLight);
+      
+      // Add point light near camera for better visibility
+      const pointLight = new THREE.PointLight(0xffffff, 0.5, 50);
+      pointLight.position.copy(camera.position);
+      scene.add(pointLight);
     }
     
     // Initialize physics world
@@ -199,31 +220,20 @@ export default function BounceScene() {
       const groundBody = new CANNON.Body({
         type: CANNON.Body.STATIC,
         shape: new CANNON.Plane(),
-        material: platformMaterial // Assign platform material
+        material: platformMaterial
       });
       groundBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
-      groundBody.position.y = -4; // Lower position to match expanded view
-      groundBody.userData = { isGround: true }; // Add userData for identification
+      groundBody.position.y = -2;
       world.addBody(groundBody);
+      
+      // Create boundaries to keep balls from falling off edges
+      createBoundary(-10, -2, 20, 1, 0, Math.PI / 4);     // Left wall
+      createBoundary(10, -2, 20, 1, 0, -Math.PI / 4);     // Right wall
       
       // Create walls around the play area to keep balls in
       createBoundary(-10, -4, 20, 0.5, 0, Math.PI / 2); // Left wall
       createBoundary(10, -4, 20, 0.5, 0, Math.PI / 2);  // Right wall
       createBoundary(0, 6, 20, 0.5, Math.PI / 2, 0);    // Top wall
-      
-      // Visible ground plane - larger for bigger play area
-      const groundGeometry = new THREE.PlaneGeometry(20, 20); // Expanded from 10x10
-      const groundMaterial = new THREE.MeshStandardMaterial({ 
-        color: 0x228B22,
-        roughness: 0.7,
-        metalness: 0.1
-      });
-      const ground = new THREE.Mesh(groundGeometry, groundMaterial);
-      ground.rotation.x = -Math.PI / 2;
-      ground.position.y = -4; // Lower position to match expanded view
-      ground.receiveShadow = true;
-      ground.userData = { isGround: true }; // Add userData for identification
-      scene.add(ground);
     }
     
     // Helper function to create boundary walls around the play area
