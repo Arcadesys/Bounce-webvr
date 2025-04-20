@@ -43,7 +43,7 @@ export class PhysicsWorld {
       material: this.platformMaterial
     });
     groundBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
-    groundBody.position.y = -4;
+    groundBody.position.y = -2;
     groundBody.userData = { isGround: true };
     this.world.addBody(groundBody);
   }

@@ -36,8 +36,8 @@ export class Game {
       0.1,
       100
     );
-    this.camera.position.set(0, 2, 12);
-    this.camera.lookAt(0, 0, 0);
+    this.camera.position.set(1, 1.5, 12);
+    this.camera.lookAt(1, 0, 0);
     
     // Renderer setup
     this.renderer = new THREE.WebGLRenderer({
@@ -59,7 +59,7 @@ export class Game {
     this.scene.add(directionalLight);
     
     // Ground plane
-    const groundGeometry = new THREE.PlaneGeometry(20, 20);
+    const groundGeometry = new THREE.PlaneGeometry(4, 4);
     const groundMaterial = new THREE.MeshStandardMaterial({
       color: 0x228B22,
       roughness: 0.7,
@@ -67,7 +67,7 @@ export class Game {
     });
     const ground = new THREE.Mesh(groundGeometry, groundMaterial);
     ground.rotation.x = -Math.PI / 2;
-    ground.position.y = -4;
+    ground.position.y = -2;
     ground.receiveShadow = true;
     this.scene.add(ground);
   }
@@ -76,9 +76,9 @@ export class Game {
     this.physics = new PhysicsWorld();
     
     // Create boundary walls
-    this.physics.createBoundary(-10, -4, 20, 0.5, 0, Math.PI / 2); // Left
-    this.physics.createBoundary(10, -4, 20, 0.5, 0, Math.PI / 2);  // Right
-    this.physics.createBoundary(0, 6, 20, 0.5, Math.PI / 2, 0);    // Top
+    this.physics.createBoundary(-1, -1, 4, 0.5, 0, Math.PI / 2); // Left
+    this.physics.createBoundary(1, -1, 4, 0.5, 0, Math.PI / 2);  // Right
+    this.physics.createBoundary(0, 1, 4, 0.5, Math.PI / 2, 0);   // Top
   }
   
   initAudio() {
@@ -103,16 +103,32 @@ export class Game {
   }
   
   onPointerDown(event) {
-    this.isDrawing = true;
     const intersection = this.getIntersectionPoint(event);
-    if (intersection) {
+    if (!intersection) return;
+
+    if (event.shiftKey) {
+      // Start drawing beam when shift is pressed
+      this.isDrawing = true;
       this.wallStart.copy(intersection);
       this.wallEnd.copy(intersection);
+    } else {
+      // Drop ball on regular click
+      this.createBall(intersection);
     }
   }
   
   onPointerMove(event) {
-    if (!this.isDrawing) return;
+    if (!this.isDrawing || !event.shiftKey) {
+      if (this.isDrawing) {
+        // Cancel beam creation if shift is released
+        this.isDrawing = false;
+        if (this.currentWallMesh) {
+          this.scene.remove(this.currentWallMesh);
+          this.currentWallMesh = null;
+        }
+      }
+      return;
+    }
     
     const intersection = this.getIntersectionPoint(event);
     if (intersection) {
