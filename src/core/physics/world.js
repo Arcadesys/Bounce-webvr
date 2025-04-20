@@ -62,7 +62,7 @@ export class PhysicsWorld {
   
   // Helper method to create boundary walls
   createBoundary(x, y, length, width, rotX, rotY) {
-    const boundaryShape = new CANNON.Box(new CANNON.Vec3(length/2, width/2, 1));
+    const boundaryShape = new CANNON.Box(new CANNON.Vec3(length/2, width/2, 0.1));
     const boundaryBody = new CANNON.Body({
       mass: 0,
       position: new CANNON.Vec3(x, y, 0),
