@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bounce WebVR - Musical Physics Playground</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+    }
+    
+    canvas {
+      display: block;
+    }
+    
+    #controls {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: rgba(0, 0, 0, 0.7);
+      padding: 15px;
+      border-radius: 8px;
+      color: white;
+      z-index: 1000;
+    }
+    
+    #controls button {
+      background: #4CAF50;
+      border: none;
+      color: white;
+      padding: 10px 20px;
+      margin: 5px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    
+    #controls button:hover {
+      background: #45a049;
+    }
+    
+    #controls button:focus {
+      outline: 3px solid #fff;
+      outline-offset: 2px;
+    }
+    
+    #announcer {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      border: 0;
+    }
+    
+    .instructions {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      background: rgba(0, 0, 0, 0.7);
+      padding: 15px;
+      border-radius: 8px;
+      color: white;
+      max-width: 300px;
+    }
+    
+    .instructions h2 {
+      margin-top: 0;
+    }
+    
+    .instructions ul {
+      padding-left: 20px;
+    }
+    
+    .instructions li {
+      margin: 8px 0;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas"></canvas>
+  
+  <div id="controls" role="region" aria-label="Game Controls">
+    <button id="sound-toggle" aria-label="Toggle Sound" title="Toggle Sound">🔊</button>
+    <button id="clear-all" aria-label="Clear All Objects" title="Clear All Objects">🗑️ Clear All</button>
+    <button id="help-toggle" aria-label="Toggle Help" title="Toggle Help">❓ Help</button>
+  </div>
+  
+  <div class="instructions" id="instructions" role="region" aria-label="Game Instructions">
+    <h2>How to Play</h2>
+    <ul>
+      <li>Click and drag to create walls</li>
+      <li>Tap/click to drop balls</li>
+      <li>Walls play musical notes when hit</li>
+      <li>Longer walls play higher notes</li>
+      <li>Use the sound toggle for audio feedback</li>
+    </ul>
+  </div>
+  
+  <div id="announcer" aria-live="polite" aria-atomic="true"></div>
+  
+  <script type="module">
+    import { Game } from './src/game/game.js';
+    
+    // Initialize game when DOM is loaded
+    document.addEventListener('DOMContentLoaded', () => {
+      const canvas = document.getElementById('gameCanvas');
+      const game = new Game(canvas);
+      
+      // Handle sound toggle
+      const soundToggle = document.getElementById('sound-toggle');
+      soundToggle.addEventListener('click', () => {
+        const isMuted = soundToggle.textContent === '🔇';
+        soundToggle.textContent = isMuted ? '🔊' : '🔇';
+        soundToggle.setAttribute('aria-label', isMuted ? 'Sound On' : 'Sound Off');
+        // TODO: Implement sound toggle in AudioManager
+      });
+      
+      // Handle clear all
+      document.getElementById('clear-all').addEventListener('click', () => {
+        // TODO: Implement clear all functionality
+      });
+      
+      // Handle help toggle
+      document.getElementById('help-toggle').addEventListener('click', () => {
+        const instructions = document.getElementById('instructions');
+        const isVisible = instructions.style.display !== 'none';
+        instructions.style.display = isVisible ? 'none' : 'block';
+      });
+    });
+  </script>
+</body>
+</html> 
