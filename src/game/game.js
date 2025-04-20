@@ -85,10 +85,14 @@ export class Game {
     
     // Initialize selection manager
     this.selectionManager = new SelectionManager();
-    this.selectionManager.setSelectionChangeCallback((object, type) => {
-      if (object && type === 'wall') {
-        this.endpointControls.show(object);
-        this.contextualMenu.show(object.mesh.position, object.mesh);
+    this.selectionManager.setSelectionChangeCallback((selectedObjects) => {
+      if (selectedObjects.length > 0) {
+        // For now, we'll just handle the first selected object
+        const selectedObject = selectedObjects[0];
+        if (selectedObject instanceof Wall) {
+          this.endpointControls.show(selectedObject);
+          this.contextualMenu.show(selectedObject.mesh.position, selectedObject.mesh);
+        }
       } else {
         this.endpointControls.hide();
         this.contextualMenu.hide();
@@ -99,9 +103,12 @@ export class Game {
     this.contextualMenu = new ContextualMenu();
     this.contextualMenu.setCallbacks({
       onDelete: () => {
-        const selection = this.selectionManager.getSelection();
-        if (selection.object && selection.type === 'wall') {
-          this.deleteWall(selection.object);
+        const selectedObjects = this.selectionManager.getSelection();
+        if (selectedObjects.length > 0) {
+          const selectedObject = selectedObjects[0];
+          if (selectedObject instanceof Wall) {
+            this.deleteWall(selectedObject);
+          }
         }
       },
       onChangeMaterial: () => {
