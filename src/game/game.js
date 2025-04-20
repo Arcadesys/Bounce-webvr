@@ -163,17 +163,56 @@ export class Game {
     if (wallIntersects.length > 0) {
       const wall = this.walls.find(w => w.mesh === wallIntersects[0].object);
       if (wall) {
-        // Deselect if clicking the same wall again
+        // Prevent event from bubbling up to avoid immediate menu close
+        event.stopPropagation();
+        
+        // If clicking the same wall, deselect it
         if (this.selectionManager.isSelected(wall)) {
           this.selectionManager.deselect();
+          
+          // Play deselection sound
+          if (window.playNote) {
+            window.playNote('D4', '32n', null, 0.1);
+          }
+          
+          // Announce deselection for screen readers
+          const announcer = document.getElementById('announcer');
+          if (announcer) {
+            announcer.textContent = 'Beam deselected';
+          }
         } else {
-          this.selectionManager.select(wall, 'wall');
+          // Select the new wall
+          this.selectionManager.select(wall);
+          
+          // Play selection sound
+          if (window.playNote) {
+            window.playNote('E5', '32n', null, 0.2);
+          }
+          
+          // Announce selection for screen readers
+          const announcer = document.getElementById('announcer');
+          if (announcer) {
+            announcer.textContent = 'Beam selected';
+          }
         }
         return;
       }
     } else {
       // Deselect if clicking empty space
-      this.selectionManager.deselect();
+      if (this.selectionManager.getSelection().length > 0) {
+        this.selectionManager.deselect();
+        
+        // Play deselection sound
+        if (window.playNote) {
+          window.playNote('D4', '32n', null, 0.1);
+        }
+        
+        // Announce deselection for screen readers
+        const announcer = document.getElementById('announcer');
+        if (announcer) {
+          announcer.textContent = 'Beam deselected';
+        }
+      }
     }
     
     // If no wall selected and shift is pressed, start drawing

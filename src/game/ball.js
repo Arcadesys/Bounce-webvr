@@ -1,133 +1,60 @@
-import * as CANNON from 'cannon-es';
 import * as THREE from 'three';
+import * as CANNON from 'cannon-es';
 
-export class Ball {
-  constructor(position, radius = 0.1, world) {
-    this.radius = radius;
-    this.mass = 0.05;
-    this.world = world;  // Store world reference
-    
-    // Create physics body
-    this.body = new CANNON.Body({
-      mass: this.mass,
-      shape: new CANNON.Sphere(radius),
-      position: new CANNON.Vec3(position.x, position.y, position.z),
-      material: world.ballMaterial,
+export class BallDispenser {
+  constructor(world, position) {
+    this.world = world;
+    this.position = position;
+    this.balls = [];
+    this.ballMaterial = new CANNON.Material("ballMaterial");
+    this.ballRadius = 0.1;
+    this.ballMass = 0.05;
+  }
+
+  createBall() {
+    const sphereShape = new CANNON.Sphere(this.ballRadius);
+    const sphereBody = new CANNON.Body({
+      mass: this.ballMass,
+      shape: sphereShape,
+      position: new CANNON.Vec3(
+        this.position.x,
+        this.position.y - 0.35, // Offset to prevent immediate collision
+        this.position.z
+      ),
+      material: this.ballMaterial,
       linearDamping: 0.01,
       angularDamping: 0.01
     });
     
-    // Add initial downward velocity
-    this.body.velocity.set(0, -2, 0);
+    // Add initial deterministic velocity
+    sphereBody.velocity.set(0, -0.25, 0);
+    sphereBody.angularVelocity.set(0, 0, 0);
     
-    // Create visual mesh
-    const geometry = new THREE.SphereGeometry(radius, 32, 32);
-    const material = new THREE.MeshStandardMaterial({
-      color: 0xFFFFFF,
-      roughness: 0.2,
-      metalness: 0.1
-    });
-    this.mesh = new THREE.Mesh(geometry, material);
-    this.mesh.castShadow = true;
-    this.mesh.receiveShadow = true;
+    this.world.addBody(sphereBody);
     
-    // Add to world
-    world.addBody(this.body);
+    // Create a simple mesh (not rendering in tests)
+    const sphereGeometry = new THREE.SphereGeometry(this.ballRadius);
+    const sphereMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
     
-    // Set up collision handling
-    this.setupCollisionHandling(world);
+    const ball = { body: sphereBody, mesh: sphere };
+    this.balls.push(ball);
+    
+    return ball;
   }
-  
-  setupCollisionHandling(world) {
-    this.body.addEventListener('collide', (event) => {
-      const targetBody = event.body;
-      
-      if (targetBody.userData && targetBody.userData.isWall) {
-        const contactNormal = event.contact.ni;
-        const impactVelocity = this.body.velocity.dot(contactNormal);
-        
-        const restitution = 0.9;
-        const bounce = -impactVelocity * (1 + restitution);
-        
-        const impulse = new CANNON.Vec3(
-          contactNormal.x * bounce * this.mass,
-          contactNormal.y * bounce * this.mass,
-          contactNormal.z * bounce * this.mass
-        );
-        
-        this.body.applyImpulse(impulse, this.body.position);
-        
-        // Smaller random impulse to maintain momentum
-        const randomImpulse = new CANNON.Vec3(
-          (Math.random() - 0.5) * 0.0005,
-          (Math.random() - 0.5) * 0.0005,
-          (Math.random() - 0.5) * 0.0005
-        );
-        this.body.applyImpulse(randomImpulse, this.body.position);
-        
-        // Emit collision event for sound handling
-        const collisionEvent = new CustomEvent('ballCollision', {
-          detail: {
-            velocity: impactVelocity,
-            wallLength: targetBody.userData.length,
-            position: this.body.position
-          }
-        });
-        window.dispatchEvent(collisionEvent);
-      }
-    });
-  }
-  
+
   update() {
-    // Update visual position to match physics
-    this.mesh.position.copy(this.body.position);
-    this.mesh.quaternion.copy(this.body.quaternion);
-    
-    // Check if ball is out of viewport bounds
-    const viewportBounds = {
-      left: -10,
-      right: 10,
-      top: 10,
-      bottom: -10
-    };
-    
-    if (this.body.position.x < viewportBounds.left ||
-        this.body.position.x > viewportBounds.right ||
-        this.body.position.y < viewportBounds.bottom ||
-        this.body.position.y > viewportBounds.top) {
-      // Remove ball from world and scene
-      this.world.removeBody(this.body);
-      this.mesh.parent.remove(this.mesh);
-      return true; // Signal that ball was removed
-    }
-    
-    // Only apply extra damping at very low velocities
-    if (this.body.velocity.lengthSquared() < 0.01) {
-      this.body.linearDamping = Math.min(this.body.linearDamping * 1.01, 0.1);
-    } else {
-      this.body.linearDamping = 0.01;  // Reset damping when moving
-    }
-    
-    return false; // Ball still in play
+    // Update mesh positions to match physics bodies
+    this.balls.forEach(ball => {
+      ball.mesh.position.copy(ball.body.position);
+      ball.mesh.quaternion.copy(ball.body.quaternion);
+    });
   }
-  
-  shouldRemove(camera) {
-    // Create a frustum from the camera
-    const frustum = new THREE.Frustum();
-    const matrix = new THREE.Matrix4().multiplyMatrices(
-      camera.projectionMatrix,
-      camera.matrixWorldInverse
-    );
-    frustum.setFromProjectionMatrix(matrix);
-    
-    // Check if the ball's position is outside the frustum
-    return !frustum.containsPoint(this.mesh.position);
-  }
-  
-  dispose(scene, world) {
-    scene.remove(this.mesh);
-    world.removeBody(this.body);
-    this.mesh.geometry.dispose();
-    this.mesh.material.dispose();
+
+  cleanup() {
+    this.balls.forEach(ball => {
+      this.world.removeBody(ball.body);
+    });
+    this.balls = [];
   }
 } 

@@ -27,16 +27,23 @@ vi.mock('cannon-es', () => {
 // Import the function to test - don't import from main.js to avoid browser-specific code
 // Instead we'll test a mock implementation based on the physics.js file
 describe('Ball Physics', () => {
-  // Mock implementation of createBallBody function
-  function createBallBody(position, radius = 0.2, world = null) {
+  // Test constants
+  const DEFAULT_RADIUS = 0.2;
+  const DEFAULT_MASS = 1;
+  const DEFAULT_DAMPING = 0.1;
+  const DEFAULT_FRICTION = 0.3;
+  const DEFAULT_RESTITUTION = 0.7;
+
+  // Helper function to create a ball body
+  function createBallBody(position, radius = DEFAULT_RADIUS, world = null) {
     const ballBody = new CANNON.Body({
-      mass: 1,
+      mass: DEFAULT_MASS,
       shape: new CANNON.Sphere(radius),
       position: new CANNON.Vec3(position.x, position.y, position.z),
-      linearDamping: 0.1,
+      linearDamping: DEFAULT_DAMPING,
       material: new CANNON.Material({
-        friction: 0.3,
-        restitution: 0.7,
+        friction: DEFAULT_FRICTION,
+        restitution: DEFAULT_RESTITUTION,
       })
     });
     
@@ -47,41 +54,58 @@ describe('Ball Physics', () => {
     return ballBody;
   }
   
-  // Spy on world.addBody
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('should create a ball with the correct radius', () => {
-    const ball = createBallBody({ x: 0, y: 0, z: 0 });
-    expect(CANNON.Sphere).toHaveBeenCalledWith(0.2); // Default radius
+  describe('Ball Creation', () => {
+    it('should create a ball with default radius when none specified', () => {
+      const ball = createBallBody({ x: 0, y: 0, z: 0 });
+      expect(CANNON.Sphere).toHaveBeenCalledWith(DEFAULT_RADIUS);
+    });
+
+    it('should create a ball with custom radius when specified', () => {
+      const customRadius = 0.5;
+      const ball = createBallBody({ x: 0, y: 0, z: 0 }, customRadius);
+      expect(CANNON.Sphere).toHaveBeenCalledWith(customRadius);
+    });
+
+    it('should set the ball position correctly', () => {
+      const position = { x: 1.5, y: 2.5, z: 3.5 };
+      const ball = createBallBody(position);
+      expect(CANNON.Vec3).toHaveBeenCalledWith(position.x, position.y, position.z);
+    });
   });
 
-  it('should create a ball with the specified position', () => {
-    const position = { x: 1.5, y: 2.5, z: 3.5 };
-    const ball = createBallBody(position);
-    expect(CANNON.Vec3).toHaveBeenCalledWith(position.x, position.y, position.z);
+  describe('Physics Properties', () => {
+    it('should set correct mass and damping values', () => {
+      const ball = createBallBody({ x: 0, y: 0, z: 0 });
+      expect(CANNON.Body).toHaveBeenCalledWith(expect.objectContaining({
+        mass: DEFAULT_MASS,
+        linearDamping: DEFAULT_DAMPING,
+      }));
+    });
+
+    it('should set correct material properties', () => {
+      const ball = createBallBody({ x: 0, y: 0, z: 0 });
+      expect(CANNON.Material).toHaveBeenCalledWith(expect.objectContaining({
+        friction: DEFAULT_FRICTION,
+        restitution: DEFAULT_RESTITUTION
+      }));
+    });
   });
 
-  it('should set correct physics properties (mass, damping, friction, restitution)', () => {
-    const ball = createBallBody({ x: 0, y: 0, z: 0 });
-    
-    // Check that Body was called with correct parameters
-    expect(CANNON.Body).toHaveBeenCalledWith(expect.objectContaining({
-      mass: 1,
-      linearDamping: 0.1,
-    }));
-    
-    // Check material properties
-    expect(CANNON.Material).toHaveBeenCalledWith(expect.objectContaining({
-      friction: 0.3,
-      restitution: 0.7
-    }));
-  });
+  describe('World Integration', () => {
+    it('should add the ball to the physics world when world is provided', () => {
+      const world = new CANNON.World();
+      const ball = createBallBody({ x: 0, y: 0, z: 0 }, DEFAULT_RADIUS, world);
+      expect(world.addBody).toHaveBeenCalledWith(ball);
+    });
 
-  it('should add the ball body to the physics world', () => {
-    const world = new CANNON.World();
-    const ball = createBallBody({ x: 0, y: 0, z: 0 }, 0.2, world);
-    expect(world.addBody).toHaveBeenCalled();
+    it('should not add the ball to the world when no world is provided', () => {
+      const world = new CANNON.World();
+      const ball = createBallBody({ x: 0, y: 0, z: 0 });
+      expect(world.addBody).not.toHaveBeenCalled();
+    });
   });
 }); 

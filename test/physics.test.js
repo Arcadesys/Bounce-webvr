@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as CANNON from 'cannon-es';
+import { PhysicsWorld } from '../src/physics';
+import * as THREE from 'three';
 
 // Mock CANNON.js
 vi.mock('cannon-es', () => {
@@ -35,6 +37,60 @@ import {
   updatePhysics,
   isBallOutOfBounds
 } from './physics.js';
+
+describe('Physics World', () => {
+  let physicsWorld;
+
+  beforeEach(() => {
+    physicsWorld = new PhysicsWorld();
+  });
+
+  test('should initialize with correct gravity', () => {
+    expect(physicsWorld.world.gravity.y).toBe(-9.82);
+  });
+
+  test('should create boundaries with correct dimensions', () => {
+    const width = 10;
+    const height = 10;
+    const depth = 10;
+    
+    physicsWorld.createBoundaries(width, height, depth);
+    
+    // Check if we have the correct number of static bodies (ground + 4 walls)
+    expect(physicsWorld.staticBodies.size).toBe(5);
+  });
+
+  test('should create a ball with correct properties', () => {
+    const radius = 1;
+    const mass = 1;
+    const position = new THREE.Vector3(0, 5, 0);
+    
+    const ball = physicsWorld.createBall(radius, mass, position);
+    
+    expect(ball.mass).toBe(mass);
+    expect(ball.position.y).toBe(position.y);
+    expect(physicsWorld.bodies.size).toBe(1);
+  });
+
+  test('should update physics world', () => {
+    const deltaTime = 1/60;
+    const initialStep = physicsWorld.world.step;
+    
+    physicsWorld.update(deltaTime);
+    
+    // Verify that step was called with the correct deltaTime
+    expect(physicsWorld.world.step).toHaveBeenCalledWith(deltaTime);
+  });
+
+  test('should remove body correctly', () => {
+    const ball = physicsWorld.createBall(1, 1, new THREE.Vector3(0, 5, 0));
+    
+    physicsWorld.removeBody(ball);
+    
+    expect(physicsWorld.bodies.size).toBe(0);
+    expect(physicsWorld.world.removeBody).toHaveBeenCalledWith(ball);
+  });
+});
 
 describe('Physics Module', () => {
   beforeEach(() => {

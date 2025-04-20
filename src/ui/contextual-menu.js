@@ -39,7 +39,11 @@ export class ContextualMenu {
     
     // Close menu when clicking outside
     document.addEventListener('click', (e) => {
-      if (this.menu.style.display === 'block' && !this.menu.contains(e.target)) {
+      // Only close if clicking outside the menu and not on a wall or control
+      if (this.menu.style.display === 'block' && 
+          !this.menu.contains(e.target) && 
+          !e.target.closest('.wall') &&
+          !e.target.closest('[data-is-control="true"]')) {
         this.hide();
       }
     });

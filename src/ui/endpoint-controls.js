@@ -7,6 +7,7 @@ export class EndpointControls {
     this.isDragging = false;
     this.activeControl = null;
     this.onEndpointsChanged = null;
+    this.currentWall = null;
   }
   
   createControl() {
@@ -21,10 +22,22 @@ export class EndpointControls {
     control.userData.isControl = true;
     control.visible = false;
     
+    // Add data attribute for DOM querying
+    const controlElement = document.createElement('div');
+    controlElement.setAttribute('data-is-control', 'true');
+    controlElement.style.display = 'none';
+    document.body.appendChild(controlElement);
+    
     return control;
   }
   
   show(wall) {
+    // Only show controls if this wall is selected
+    if (!window.game.selectionManager.isSelected(wall)) {
+      this.hide();
+      return;
+    }
+    
     // Get wall endpoints from the wall's start and end properties
     const start = wall.start.clone();
     const end = wall.end.clone();
@@ -56,11 +69,18 @@ export class EndpointControls {
     this.startControl.visible = false;
     this.endControl.visible = false;
     this.currentWall = null;
+    this.isDragging = false;
+    this.activeControl = null;
   }
   
   onPointerDown(event, camera, raycaster) {
     const intersects = raycaster.intersectObjects([this.startControl, this.endControl]);
-    if (intersects.length > 0) {
+    if (intersects.length > 0 && this.currentWall) {
+      // Ensure the wall this control belongs to is selected
+      if (!window.game.selectionManager.isSelected(this.currentWall)) {
+        window.game.selectionManager.select(this.currentWall);
+      }
+      
       this.isDragging = true;
       this.activeControl = intersects[0].object;
       
@@ -76,6 +96,17 @@ export class EndpointControls {
   
   onPointerMove(event, camera, raycaster) {
     if (!this.isDragging || !this.activeControl || !this.currentWall) return;
+    
+    // Ensure the wall is still selected
+    if (!window.game.selectionManager.isSelected(this.currentWall)) {
+      this.hide();
+      return;
+    }
+    
+    // Temporarily hide context menu during movement
+    if (window.game && window.game.contextualMenu) {
+      window.game.contextualMenu.hide();
+    }
     
     // Get intersection with ground plane
     const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
@@ -109,6 +140,11 @@ export class EndpointControls {
     if (this.isDragging) {
       this.isDragging = false;
       this.activeControl = null;
+      
+      // Show context menu again after movement stops
+      if (window.game && window.game.contextualMenu && this.currentWall) {
+        window.game.contextualMenu.show(this.currentWall.mesh.position, this.currentWall.mesh);
+      }
       
       // Play release sound
       if (window.playNote) {
