@@ -5,6 +5,7 @@ export class Ball {
   constructor(position, radius = 0.1, world) {
     this.radius = radius;
     this.mass = 0.05;
+    this.world = world;  // Store world reference
     
     // Create physics body
     this.body = new CANNON.Body({
@@ -82,12 +83,32 @@ export class Ball {
     this.mesh.position.copy(this.body.position);
     this.mesh.quaternion.copy(this.body.quaternion);
     
+    // Check if ball is out of viewport bounds
+    const viewportBounds = {
+      left: -10,
+      right: 10,
+      top: 10,
+      bottom: -10
+    };
+    
+    if (this.body.position.x < viewportBounds.left ||
+        this.body.position.x > viewportBounds.right ||
+        this.body.position.y < viewportBounds.bottom ||
+        this.body.position.y > viewportBounds.top) {
+      // Remove ball from world and scene
+      this.world.removeBody(this.body);
+      this.mesh.parent.remove(this.mesh);
+      return true; // Signal that ball was removed
+    }
+    
     // Only apply extra damping at very low velocities
     if (this.body.velocity.lengthSquared() < 0.01) {
       this.body.linearDamping = Math.min(this.body.linearDamping * 1.01, 0.1);
     } else {
       this.body.linearDamping = 0.01;  // Reset damping when moving
     }
+    
+    return false; // Ball still in play
   }
   
   shouldRemove(camera) {

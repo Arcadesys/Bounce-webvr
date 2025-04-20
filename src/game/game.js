@@ -36,8 +36,8 @@ export class Game {
       0.1,
       100
     );
-    this.camera.position.set(1, 1.5, 12);
-    this.camera.lookAt(1, 0, 0);
+    this.camera.position.set(0, 1.5, 12);
+    this.camera.lookAt(0, 0, 0);
     
     // Renderer setup
     this.renderer = new THREE.WebGLRenderer({
@@ -61,11 +61,6 @@ export class Game {
   
   initPhysics() {
     this.physics = new PhysicsWorld();
-    
-    // Create boundary walls - only at the edges of our play space
-    this.physics.createBoundary(-1, 0, 4, 0.5, Math.PI / 2, 0); // Left
-    this.physics.createBoundary(1, 0, 4, 0.5, Math.PI / 2, 0);  // Right
-    this.physics.createBoundary(0, 1, 2, 0.5, 0, 0);   // Top
   }
   
   initAudio() {
@@ -201,30 +196,25 @@ export class Game {
     this.scene.add(this.currentWallMesh);
   }
   
-  update(dt) {
-    // Update physics
-    this.physics.step(dt);
-    
-    // Update balls
-    for (let i = this.balls.length - 1; i >= 0; i--) {
-      const ball = this.balls[i];
-      ball.update();
-      
-      if (ball.shouldRemove(this.camera)) {
-        ball.dispose(this.scene, this.physics);
-        this.balls.splice(i, 1);
-      }
-    }
-  }
-  
   animate() {
     requestAnimationFrame(this.animate.bind(this));
     
-    const time = performance.now();
-    const dt = (time - this.lastTime) / 1000;
-    this.lastTime = time;
+    const currentTime = performance.now();
+    const deltaTime = (currentTime - this.lastTime) / 1000;
+    this.lastTime = currentTime;
     
-    this.update(dt);
+    // Update physics
+    this.physics.step(deltaTime);
+    
+    // Update balls and remove any that are out of bounds
+    this.balls = this.balls.filter(ball => !ball.update());
+    
+    // Update wall preview if drawing
+    if (this.isDrawing) {
+      this.updateWallPreview();
+    }
+    
+    // Render scene
     this.renderer.render(this.scene, this.camera);
   }
 } 
