@@ -35,18 +35,6 @@ export class PhysicsWorld {
     );
     
     this.world.addContactMaterial(this.contactMaterial);
-    
-    // Create ground plane
-    const groundBody = new CANNON.Body({
-      type: CANNON.Body.STATIC,
-      shape: new CANNON.Plane(),
-      material: this.platformMaterial
-    });
-    groundBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
-    groundBody.position.y = -4;
-    groundBody.position.z = 0.1; // Move slightly forward in Z
-    groundBody.userData = { isGround: true };
-    this.world.addBody(groundBody);
   }
   
   step(dt) {
@@ -71,8 +59,16 @@ export class PhysicsWorld {
       material: this.platformMaterial
     });
     
+    // Fix rotation to use proper axis
     const quat = new CANNON.Quaternion();
-    quat.setFromAxisAngle(new CANNON.Vec3(0, 0, 1), rotX);
+    if (rotX !== 0) {
+      quat.setFromAxisAngle(new CANNON.Vec3(0, 0, 1), rotX);
+    }
+    if (rotY !== 0) {
+      const quatY = new CANNON.Quaternion();
+      quatY.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), rotY);
+      quat.mult(quatY, quat);
+    }
     boundaryBody.quaternion.copy(quat);
     
     boundaryBody.userData = {
