@@ -17,6 +17,7 @@ import { playBounceSound } from './utils/synthManager.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
 console.log('✅ Dependencies imported successfully');
 
@@ -66,6 +67,47 @@ soundToggle?.addEventListener('click', () => {
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x000000); // Pure black background for maximum contrast
 
+// Create gradient skybox
+const vertexShader = `
+    varying vec3 vWorldPosition;
+    void main() {
+        vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+        vWorldPosition = worldPosition.xyz;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+`;
+
+const fragmentShader = `
+    uniform vec3 topColor;
+    uniform vec3 bottomColor;
+    uniform float offset;
+    uniform float exponent;
+    varying vec3 vWorldPosition;
+    
+    void main() {
+        float h = normalize(vWorldPosition + offset).y;
+        gl_FragColor = vec4(mix(bottomColor, topColor, max(pow(max(h, 0.0), exponent), 0.0)), 1.0);
+    }
+`;
+
+const uniforms = {
+    topColor: { value: new THREE.Color(0x0077ff) },
+    bottomColor: { value: new THREE.Color(0x000000) },
+    offset: { value: 33 },
+    exponent: { value: 0.6 }
+};
+
+const skyGeo = new THREE.SphereGeometry(1000, 32, 15);
+const skyMat = new THREE.ShaderMaterial({
+    vertexShader: vertexShader,
+    fragmentShader: fragmentShader,
+    uniforms: uniforms,
+    side: THREE.BackSide
+});
+
+const sky = new THREE.Mesh(skyGeo, skyMat);
+scene.add(sky);
+
 // Get canvas element
 const canvas = document.getElementById('bounceCanvas');
 if (!canvas) {
@@ -74,18 +116,9 @@ if (!canvas) {
 }
 
 // Set up camera first
-const activeCamera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-activeCamera.position.set(0, 15, 20); // Moved back and up for a more top-down view
+const activeCamera = new THREE.PerspectiveCamera(30, window.innerWidth / window.innerHeight, 0.1, 1000);
+activeCamera.position.set(0, 0, 15); // Position camera directly in front of the grid
 activeCamera.lookAt(0, 0, 0);
-
-// Add camera controls for better view adjustment
-const controls = new THREE.OrbitControls(activeCamera, renderer.domElement);
-controls.enableDamping = true;
-controls.dampingFactor = 0.05;
-controls.screenSpacePanning = true;
-controls.minDistance = 10;
-controls.maxDistance = 30;
-controls.maxPolarAngle = Math.PI / 2.5; // Limit how far down we can look
 
 // Set up renderer
 const renderer = new THREE.WebGLRenderer({ 
@@ -99,6 +132,57 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body?.appendChild(renderer.domElement);
 
+// Panning controls
+let isSpacePressed = false;
+let isPanning = false;
+let previousMousePosition = new THREE.Vector2();
+const panSpeed = 0.01;
+
+// Handle space key for panning
+window.addEventListener('keydown', (event) => {
+  if (event.code === 'Space') {
+    isSpacePressed = true;
+    document.body.style.cursor = 'grab';
+  }
+});
+
+window.addEventListener('keyup', (event) => {
+  if (event.code === 'Space') {
+    isSpacePressed = false;
+    isPanning = false;
+    document.body.style.cursor = 'default';
+  }
+});
+
+// Handle panning
+window.addEventListener('mousedown', (event) => {
+  if (isSpacePressed) {
+    isPanning = true;
+    previousMousePosition.set(event.clientX, event.clientY);
+    document.body.style.cursor = 'grabbing';
+  }
+});
+
+window.addEventListener('mousemove', (event) => {
+  if (isPanning) {
+    const currentMousePosition = new THREE.Vector2(event.clientX, event.clientY);
+    const delta = currentMousePosition.sub(previousMousePosition);
+    
+    // Move camera in the opposite direction of the mouse movement
+    activeCamera.position.x -= delta.x * panSpeed;
+    activeCamera.position.y += delta.y * panSpeed;
+    
+    previousMousePosition.set(event.clientX, event.clientY);
+  }
+});
+
+window.addEventListener('mouseup', () => {
+  if (isPanning) {
+    isPanning = false;
+    document.body.style.cursor = isSpacePressed ? 'grab' : 'default';
+  }
+});
+
 // Create a subtle grid plane for cyberpunk effect
 const gridGeometry = new THREE.PlaneGeometry(30, 30, 30, 30);
 const gridMaterial = new THREE.LineBasicMaterial({ 
@@ -111,21 +195,26 @@ const grid = new THREE.LineSegments(
   gridMaterial
 );
 grid.rotation.x = -Math.PI / 2;
-grid.position.y = -2;
+grid.position.z = 0; // Position grid at z=0 for true 2D plane
 scene.add(grid);
 
 // Lighting setup for cyberpunk effect
 const ambientLight = new THREE.AmbientLight(0x000000, 0.1); // Very dark ambient
 scene.add(ambientLight);
 
-// Neon lights
-const neonLight1 = new THREE.PointLight(0xff00ff, 2, 10); // Magenta
-neonLight1.position.set(-5, 3, -5);
-scene.add(neonLight1);
+// Add directional light for 2D effect
+const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+directionalLight.position.set(0, 1, 0);
+scene.add(directionalLight);
 
-const neonLight2 = new THREE.PointLight(0x00ffff, 2, 10); // Cyan
-neonLight2.position.set(5, 3, 5);
-scene.add(neonLight2);
+// Add point lights for 3D effects
+const pointLight1 = new THREE.PointLight(0xff00ff, 1, 10);
+pointLight1.position.set(5, 5, 5);
+scene.add(pointLight1);
+
+const pointLight2 = new THREE.PointLight(0x00ffff, 1, 10);
+pointLight2.position.set(-5, 5, -5);
+scene.add(pointLight2);
 
 // Camera-following light
 const followLight = new THREE.PointLight(0xffffff, 1.0, 15);

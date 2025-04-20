@@ -20,6 +20,7 @@ export class SceneManager {
     this.drawingPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
     this.wallCounter = 0; // Counter for generating unique wall IDs
     this.onWallsUpdate = null;
+    this.audioInitialized = false;
     
     // Initialize everything synchronously to avoid race conditions
     this.initScene();
@@ -33,17 +34,29 @@ export class SceneManager {
   }
 
   initScene() {
-    this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    this.camera.position.set(0, 5, 10);
+    // Use orthographic camera for consistent physics visualization
+    const aspect = window.innerWidth / window.innerHeight;
+    const frustumSize = 20;
+    this.camera = new THREE.OrthographicCamera(
+      -frustumSize * aspect / 2,
+      frustumSize * aspect / 2,
+      frustumSize / 2,
+      -frustumSize / 2,
+      0.1,
+      1000
+    );
+    this.camera.position.set(0, 10, 20);
     this.camera.lookAt(0, 0, 0);
 
-    this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true });
+    this.renderer = new THREE.WebGLRenderer({ 
+      canvas: this.canvas, 
+      antialias: true,
+      alpha: true // Enable transparency
+    });
+    this.renderer.setClearColor(0x000000, 0); // Clear to transparent
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.0;
-    this.renderer.outputEncoding = THREE.sRGBEncoding;
 
     // Load environment map
     const pmremGenerator = new THREE.PMREMGenerator(this.renderer);
@@ -72,6 +85,10 @@ export class SceneManager {
       gravity: new CANNON.Vec3(0, -9.82, 0)
     });
     
+    // Set solver iterations for better stability
+    this.world.solver.iterations = 10;
+    this.world.broadphase = new CANNON.NaiveBroadphase();
+    
     // Create ground plane
     const groundShape = new CANNON.Plane();
     const groundBody = new CANNON.Body({
@@ -83,22 +100,20 @@ export class SceneManager {
       })
     });
     groundBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
+    groundBody.position.y = -2; // Move ground down slightly
     this.world.addBody(groundBody);
 
-    // Create ground visual
-    const groundGeometry = new THREE.PlaneGeometry(30, 30);
-    const groundMaterial = new THREE.MeshPhysicalMaterial({ 
-      color: 0xffffff,
-      roughness: 0.1,
-      metalness: 0.1,
-      transmission: 0.9,
-      thickness: 0.5,
-      envMapIntensity: 1.0,
-      clearcoat: 1.0,
-      clearcoatRoughness: 0.1
+    // Create visual ground plane - make it semi-transparent
+    const groundGeometry = new THREE.PlaneGeometry(100, 100);
+    const groundMaterial = new THREE.MeshPhongMaterial({ 
+      color: 0x808080,
+      transparent: true,
+      opacity: 0.2,
+      side: THREE.DoubleSide
     });
     const groundMesh = new THREE.Mesh(groundGeometry, groundMaterial);
     groundMesh.rotation.x = -Math.PI / 2;
+    groundMesh.position.y = -2;
     groundMesh.receiveShadow = true;
     this.scene.add(groundMesh);
   }
@@ -120,8 +135,22 @@ export class SceneManager {
     window.addEventListener('resize', this.onWindowResize.bind(this));
   }
 
+  async initAudio() {
+    if (!this.audioInitialized) {
+      try {
+        await Tone.start();
+        this.audioInitialized = true;
+        console.log('Audio initialized successfully');
+      } catch (error) {
+        console.warn('Error initializing audio:', error);
+      }
+    }
+  }
+
   onMouseDown = async (event) => {
-    // Audio should already be initialized through the modal
+    // Initialize audio on first interaction
+    await this.initAudio();
+
     this.updateMousePosition(event);
 
     if (event.shiftKey) {
@@ -184,25 +213,29 @@ export class SceneManager {
 
   createBall(position) {
     // Create physics body
-    const radius = 0.3; // Smaller radius
+    const radius = 0.01; // Keep the tiny size
     const sphereShape = new CANNON.Sphere(radius);
     const sphereBody = new CANNON.Body({
-      mass: 1,
+      mass: 0.05,
       shape: sphereShape,
-      position: new CANNON.Vec3(position.x, position.y + 5, position.z), // Start higher up
+      position: new CANNON.Vec3(position.x, position.y + 5, position.z),
       material: new CANNON.Material({
-        friction: 0.3,
+        friction: 0.1,
         restitution: 0.7
-      })
+      }),
+      linearDamping: 0.01,
+      angularDamping: 0.01
     });
     this.world.addBody(sphereBody);
 
     // Create visual sphere
     const geometry = new THREE.SphereGeometry(radius);
     const material = new THREE.MeshStandardMaterial({ 
-      color: 0x00ff00,
+      color: 0x00ffff, // Bright cyan color for visibility
       roughness: 0.4,
-      metalness: 0.6
+      metalness: 0.6,
+      emissive: 0x00ffff,
+      emissiveIntensity: 0.2
     });
     const mesh = new THREE.Mesh(geometry, material);
     mesh.castShadow = true;
@@ -219,7 +252,7 @@ export class SceneManager {
       id: wallId,
       mesh: null,
       body: null,
-      voice: this.wallCounter % 2 === 0 ? 'A' : 'B' // Alternate between voices
+      voice: this.wallCounter % 2 === 0 ? 'A' : 'B'
     };
 
     // Calculate wall dimensions and position
@@ -229,18 +262,26 @@ export class SceneManager {
 
     // Create mesh
     const geometry = new THREE.BoxGeometry(length, 0.2, 0.2);
-    const material = new THREE.MeshPhongMaterial({ color: 0x808080 });
+    const material = new THREE.MeshStandardMaterial({ 
+      color: 0x808080,
+      roughness: 0.4,
+      metalness: 0.6
+    });
     wall.mesh = new THREE.Mesh(geometry, material);
     wall.mesh.position.copy(center);
     wall.mesh.lookAt(endPoint);
     this.scene.add(wall.mesh);
 
     // Create physics body
-    wall.body = createWallBody(length, center, direction);
+    wall.body = this.createWallBody(length, center, direction);
     this.world.addBody(wall.body);
 
     // Register with physics system
-    registerBeam(wallId, wall.body, wall.voice);
+    try {
+      registerBeam(wallId, wall.body, wall.voice);
+    } catch (error) {
+      console.warn('Error registering beam:', error);
+    }
 
     // Add to walls array and notify
     this.walls.push(wall);
@@ -315,13 +356,27 @@ export class SceneManager {
   animate = () => {
     requestAnimationFrame(this.animate);
 
-    // Step physics world
-    this.world.step(1/60);
+    // Step physics world with fixed timestep
+    const fixedTimeStep = 1.0 / 60.0;
+    const maxSubSteps = 3;
+    this.world.step(fixedTimeStep, fixedTimeStep, maxSubSteps);
 
     // Update ball positions and remove out-of-bounds balls
     this.balls = this.balls.filter(ball => {
-      ball.mesh.position.copy(ball.body.position);
-      ball.mesh.quaternion.copy(ball.body.quaternion);
+      // Debug log ball position
+      console.log('Ball position:', ball.body.position.y);
+      
+      ball.mesh.position.set(
+        ball.body.position.x,
+        ball.body.position.y,
+        ball.body.position.z
+      );
+      ball.mesh.quaternion.set(
+        ball.body.quaternion.x,
+        ball.body.quaternion.y,
+        ball.body.quaternion.z,
+        ball.body.quaternion.w
+      );
 
       // Remove balls that fall too far
       if (ball.body.position.y < -20) {
@@ -332,8 +387,8 @@ export class SceneManager {
       return true;
     });
 
-    // Use composer instead of renderer
-    this.composer.render();
+    // Render scene directly without post-processing for now
+    this.renderer.render(this.scene, this.camera);
   }
 
   dispose() {
@@ -361,5 +416,24 @@ export class SceneManager {
     
     // Stop animation
     cancelAnimationFrame(this.animate);
+  }
+
+  createWallBody(length, center, direction) {
+    const angle = Math.atan2(direction.y, direction.x);
+    const wallShape = new CANNON.Box(new CANNON.Vec3(length/2, 0.1, 0.1)); // Half-dimensions
+    const wallBody = new CANNON.Body({
+      mass: 0, // Static body
+      position: new CANNON.Vec3(center.x, center.y, center.z),
+      shape: wallShape,
+      material: new CANNON.Material({
+        friction: 0.3,
+        restitution: 0.5
+      })
+    });
+    
+    // Rotate to match visual orientation
+    wallBody.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 0, 1), angle);
+    
+    return wallBody;
   }
 } 
