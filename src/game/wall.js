@@ -16,13 +16,16 @@ export class Wall {
     const angle = Math.atan2(direction.y, direction.x);
     
     // Create physics body
-    const wallShape = new CANNON.Box(new CANNON.Vec3(length/2, 0.1, 0.1));
+    const wallShape = new CANNON.Box(new CANNON.Vec3(length/2, 0.2, 0.2));
     this.body = new CANNON.Body({
       mass: 0, // Static body
       position: new CANNON.Vec3(center.x, center.y, center.z),
       shape: wallShape,
       material: world.platformMaterial,
-      fixedRotation: true // Prevent rotation for stability
+      fixedRotation: true, // Prevent rotation for stability
+      // Set collision groups - walls collide with balls
+      collisionFilterGroup: world.COLLISION_GROUPS.WALLS,
+      collisionFilterMask: world.COLLISION_GROUPS.BALLS
     });
     
     // Store note information with the wall body
@@ -75,7 +78,7 @@ export class Wall {
     const angle = Math.atan2(direction.y, direction.x);
     
     // Update physics body
-    const wallShape = new CANNON.Box(new CANNON.Vec3(length/2, 0.1, 0.1));
+    const wallShape = new CANNON.Box(new CANNON.Vec3(length/2, 0.2, 0.2));
     this.body.removeShape(this.body.shapes[0]);
     this.body.addShape(wallShape);
     this.body.position.copy(new CANNON.Vec3(center.x, center.y, center.z));

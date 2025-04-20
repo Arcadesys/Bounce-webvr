@@ -56,6 +56,49 @@
       clip: rect(0, 0, 0, 0);
       border: 0;
     }
+    
+    #help-dialog {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background-color: rgba(255, 255, 255, 0.95);
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 0 20px rgba(0, 0, 0, 0.3);
+      max-width: 500px;
+      width: 90%;
+      z-index: 1000;
+      display: none;
+    }
+    
+    #help-dialog h2 {
+      margin-top: 0;
+      color: #333;
+    }
+    
+    .help-content {
+      margin-bottom: 20px;
+    }
+    
+    .help-content p {
+      margin: 10px 0;
+      line-height: 1.5;
+    }
+    
+    #close-help {
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    
+    #close-help:hover {
+      background-color: #45a049;
+    }
   </style>
 </head>
 <body>
@@ -83,17 +126,93 @@
         const isMuted = soundToggle.textContent === '🔇';
         soundToggle.textContent = isMuted ? '🔊' : '🔇';
         soundToggle.setAttribute('aria-label', isMuted ? 'Sound On' : 'Sound Off');
-        // TODO: Implement sound toggle in AudioManager
+        
+        // Toggle sound in the game's audio manager
+        if (game.audio) {
+          const isNowMuted = game.audio.toggleMute();
+          
+          // Play a sound to indicate the change (if not muted)
+          if (!isNowMuted && game.audioInitialized) {
+            // Use a simple beep to indicate sound is on
+            const audioContext = game.audio.context;
+            if (audioContext) {
+              const oscillator = audioContext.createOscillator();
+              const gainNode = audioContext.createGain();
+              
+              oscillator.connect(gainNode);
+              gainNode.connect(audioContext.destination);
+              
+              oscillator.frequency.setValueAtTime(440, audioContext.currentTime);
+              gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+              gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.1);
+              
+              oscillator.start();
+              oscillator.stop(audioContext.currentTime + 0.1);
+            }
+          }
+        }
       });
       
       // Handle clear all
       document.getElementById('clear-all').addEventListener('click', () => {
-        // TODO: Implement clear all functionality
+        // Clear all balls, walls, and dispensers
+        game.balls.forEach(ball => ball.dispose(game.scene, game.physics));
+        game.balls = [];
+        
+        game.walls.forEach(wall => wall.dispose(game.scene, game.physics));
+        game.walls = [];
+        
+        game.dispensers.forEach(dispenser => dispenser.dispose(game.scene));
+        game.dispensers = [];
+        
+        // Announce for screen readers
+        const announcer = document.getElementById('announcer');
+        if (announcer) {
+          announcer.textContent = 'All objects cleared';
+        }
+        
+        // Play success sound
+        if (game.audio && game.audioInitialized) {
+          game.audio.playCollisionSound(5);
+        }
       });
       
-      // Handle help toggle - removed since instructions div is gone
+      // Handle help toggle
       document.getElementById('help-toggle').addEventListener('click', () => {
-        // TODO: Implement new help functionality if needed
+        // Create help dialog if it doesn't exist
+        let helpDialog = document.getElementById('help-dialog');
+        if (!helpDialog) {
+          helpDialog = document.createElement('div');
+          helpDialog.id = 'help-dialog';
+          helpDialog.setAttribute('role', 'dialog');
+          helpDialog.setAttribute('aria-labelledby', 'help-title');
+          helpDialog.innerHTML = `
+            <h2 id="help-title">How to Play</h2>
+            <div class="help-content">
+              <p><strong>Left Click:</strong> Drop a ball</p>
+              <p><strong>Right Click:</strong> Place a dispenser</p>
+              <p><strong>Shift + Click and Drag:</strong> Create a wall</p>
+              <p><strong>Click on objects:</strong> Select them</p>
+              <p><strong>Use context menu:</strong> Delete selected objects</p>
+            </div>
+            <button id="close-help">Close</button>
+          `;
+          document.body.appendChild(helpDialog);
+          
+          // Add close button handler
+          document.getElementById('close-help').addEventListener('click', () => {
+            helpDialog.style.display = 'none';
+          });
+        }
+        
+        // Toggle help dialog
+        helpDialog.style.display = helpDialog.style.display === 'none' ? 'block' : 'none';
+        
+        // Announce for screen readers
+        const announcer = document.getElementById('announcer');
+        if (announcer) {
+          announcer.textContent = helpDialog.style.display === 'none' ? 'Help closed' : 'Help opened';
+        }
       });
     });
   </script>

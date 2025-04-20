@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
+import { Dispenser } from '../src/game/dispenser.js';
+import { Ball } from '../src/game/ball.js';
 
 // Mock Tone.js
 vi.mock('tone', () => ({
@@ -22,6 +24,97 @@ function getBallPositions(balls) {
     z: ball.body.position.z
   }));
 }
+
+describe('Dispenser', () => {
+  let world;
+  let dispenser;
+  let dispenserPosition;
+  
+  beforeEach(() => {
+    // Initialize physics world
+    world = new CANNON.World({
+      gravity: new CANNON.Vec3(0, -9.82, 0)
+    });
+    
+    // Create materials
+    world.ballMaterial = new CANNON.Material("ballMaterial");
+    world.platformMaterial = new CANNON.Material("platformMaterial");
+    
+    // Create contact material
+    const contactMaterial = new CANNON.ContactMaterial(
+      world.ballMaterial,
+      world.platformMaterial,
+      {
+        friction: 0.01,
+        restitution: 0.9
+      }
+    );
+    world.addContactMaterial(contactMaterial);
+    
+    // Create dispenser at test position
+    dispenserPosition = new THREE.Vector3(0, 5, 0);
+    dispenser = new Dispenser(dispenserPosition, world);
+  });
+  
+  it('should create a dispenser with correct position', () => {
+    expect(dispenser.position).toEqual(dispenserPosition);
+    expect(dispenser.mesh.position).toEqual(dispenserPosition);
+  });
+  
+  it('should spawn balls at regular intervals', () => {
+    // First spawn should happen immediately
+    const ball1 = dispenser.spawnBall();
+    expect(ball1).toBeInstanceOf(Ball);
+    expect(ball1.body.position.y).toBeCloseTo(dispenserPosition.y - 0.35, 2);
+    
+    // Second spawn should happen after interval
+    dispenser.lastSpawnTime = 0;
+    expect(dispenser.update(500)).toBeNull(); // No spawn at 500ms
+    const ball2 = dispenser.update(1000); // Should spawn at 1000ms
+    expect(ball2).toBeInstanceOf(Ball);
+  });
+  
+  it('should add randomness to ball spawn positions', () => {
+    const positions = new Set();
+    
+    // Spawn multiple balls and collect their positions
+    for (let i = 0; i < 50; i++) {
+      const ball = dispenser.spawnBall();
+      positions.add(`${ball.body.position.x.toFixed(4)},${ball.body.position.z.toFixed(4)}`);
+    }
+    
+    // Should have many different positions
+    expect(positions.size).toBeGreaterThan(20);
+  });
+  
+  it('should keep spawn positions within expected range', () => {
+    // Spawn multiple balls and check their positions
+    for (let i = 0; i < 50; i++) {
+      const ball = dispenser.spawnBall();
+      
+      // X and Z should be within ±0.05 of dispenser center
+      expect(ball.body.position.x).toBeGreaterThanOrEqual(-0.05);
+      expect(ball.body.position.x).toBeLessThanOrEqual(0.05);
+      expect(ball.body.position.z).toBeGreaterThanOrEqual(-0.05);
+      expect(ball.body.position.z).toBeLessThanOrEqual(0.05);
+      
+      // Y should be exactly at -0.35 below dispenser
+      expect(ball.body.position.y).toBeCloseTo(dispenserPosition.y - 0.35, 2);
+    }
+  });
+  
+  it('should clean up resources on dispose', () => {
+    const scene = new THREE.Scene();
+    scene.add(dispenser.mesh);
+    
+    // Spy on scene.remove
+    const removeSpy = vi.spyOn(scene, 'remove');
+    
+    dispenser.dispose(scene);
+    
+    expect(removeSpy).toHaveBeenCalledWith(dispenser.mesh);
+  });
+});
 
 describe('Dispenser Functionality', () => {
   let world;

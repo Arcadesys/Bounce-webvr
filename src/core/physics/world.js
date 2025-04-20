@@ -7,8 +7,14 @@ export class PhysicsWorld {
     });
     
     // Improve solver for better physics
-    this.world.solver.iterations = 20;
+    this.world.solver.iterations = 50;
     this.world.solver.tolerance = 0.0001;
+    
+    // Define collision groups
+    this.COLLISION_GROUPS = {
+      BALLS: 1,
+      WALLS: 2
+    };
     
     // Create materials
     this.ballMaterial = new CANNON.Material("ballMaterial");
@@ -21,7 +27,7 @@ export class PhysicsWorld {
     this.platformMaterial.friction = 0.01;
     this.platformMaterial.restitution = 0.9;
     
-    // Create contact material with minimal friction
+    // Create contact material with improved settings
     this.contactMaterial = new CANNON.ContactMaterial(
       this.ballMaterial,
       this.platformMaterial,
@@ -29,12 +35,26 @@ export class PhysicsWorld {
         friction: 0.01,
         restitution: 0.9,
         contactEquationRelaxation: 3,
-        frictionEquationStiffness: 1e6,
-        contactEquationStiffness: 1e6
+        frictionEquationStiffness: 1e7,
+        contactEquationStiffness: 1e7,
+        frictionEquationRegularizationTime: 3
+      }
+    );
+    
+    // Create ball-to-ball contact material that allows passing through
+    this.ballContactMaterial = new CANNON.ContactMaterial(
+      this.ballMaterial,
+      this.ballMaterial,
+      {
+        friction: 0,
+        restitution: 0,
+        contactEquationStiffness: 0,  // Zero stiffness means no collision response
+        frictionEquationStiffness: 0
       }
     );
     
     this.world.addContactMaterial(this.contactMaterial);
+    this.world.addContactMaterial(this.ballContactMaterial);
   }
   
   step(dt) {

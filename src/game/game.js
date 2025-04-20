@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { PhysicsWorld } from '../core/physics/world.js';
 import { Ball } from './ball.js';
 import { Wall } from './wall.js';
+import { Dispenser } from './dispenser.js';
 import { AudioManager } from '../core/audio/audio-manager.js';
 import { SelectionManager } from '../../utils/SelectionManager.js';
 import { ContextualMenu } from '../ui/contextual-menu.js';
@@ -12,6 +13,7 @@ export class Game {
     this.canvas = canvas;
     this.balls = [];
     this.walls = [];
+    this.dispensers = [];
     this.isDrawing = false;
     this.wallStart = new THREE.Vector3();
     this.wallEnd = new THREE.Vector3();
@@ -53,15 +55,20 @@ export class Game {
     this.renderer.shadowMap.enabled = true;
     
     // Lighting
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
     this.scene.add(ambientLight);
     
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
     directionalLight.position.set(10, 20, 15);
     directionalLight.castShadow = true;
     directionalLight.shadow.mapSize.width = 2048;
     directionalLight.shadow.mapSize.height = 2048;
     this.scene.add(directionalLight);
+
+    // Add a second directional light from another angle
+    const secondaryLight = new THREE.DirectionalLight(0xffffff, 0.5);
+    secondaryLight.position.set(-10, 15, -15);
+    this.scene.add(secondaryLight);
   }
   
   initPhysics() {
@@ -70,12 +77,14 @@ export class Game {
   
   initAudio() {
     this.audio = new AudioManager();
-    this.audio.start();
+    
+    // We'll initialize audio on first user interaction
+    this.audioInitialized = false;
     
     // Listen for ball collisions
     window.addEventListener('ballCollision', (event) => {
       const { velocity, wallLength, position } = event.detail;
-      this.audio.playCollisionSound(velocity, wallLength, position);
+      this.audio.playCollisionSound(velocity);
     });
   }
   
@@ -120,6 +129,19 @@ export class Game {
     // Add endpoint controls to scene
     this.scene.add(this.endpointControls.startControl);
     this.scene.add(this.endpointControls.endControl);
+    
+    // Add dispenser context menu
+    this.contextualMenu.addMenuItem('Delete', () => {
+      const selected = this.selectionManager.getSelected();
+      if (selected && selected.type === 'dispenser') {
+        const dispenser = selected.object;
+        const index = this.dispensers.indexOf(dispenser);
+        if (index > -1) {
+          dispenser.dispose(this.scene);
+          this.dispensers.splice(index, 1);
+        }
+      }
+    });
   }
   
   initInput() {
@@ -128,6 +150,26 @@ export class Game {
     this.canvas.addEventListener('mousemove', this.onPointerMove.bind(this));
     this.canvas.addEventListener('mouseup', this.onPointerUp.bind(this));
     this.canvas.addEventListener('touchstart', this.onTouchStart.bind(this));
+    
+    // Prevent context menu on right click
+    this.canvas.addEventListener('contextmenu', (event) => {
+      event.preventDefault();
+    });
+    
+    // Initialize audio on first user interaction
+    const initAudioOnInteraction = async () => {
+      if (!this.audioInitialized) {
+        await this.audio.start();
+        this.audioInitialized = true;
+        
+        // Remove the event listeners after initialization
+        this.canvas.removeEventListener('mousedown', initAudioOnInteraction);
+        this.canvas.removeEventListener('touchstart', initAudioOnInteraction);
+      }
+    };
+    
+    this.canvas.addEventListener('mousedown', initAudioOnInteraction);
+    this.canvas.addEventListener('touchstart', initAudioOnInteraction);
     
     // Window resize handling
     window.addEventListener('resize', this.onWindowResize.bind(this));
@@ -148,15 +190,17 @@ export class Game {
       return;
     }
     
-    // Check for wall selection
+    // Check for wall or dispenser selection
     const wallIntersects = raycaster.intersectObjects(
       this.walls.map(wall => wall.mesh)
+    );
+    const dispenserIntersects = raycaster.intersectObjects(
+      this.dispensers.map(dispenser => dispenser.mesh)
     );
     
     if (wallIntersects.length > 0) {
       const wall = this.walls.find(w => w.mesh === wallIntersects[0].object);
       if (wall) {
-        // Deselect if clicking the same wall again
         if (this.selectionManager.isSelected(wall)) {
           this.selectionManager.deselect();
         } else {
@@ -164,8 +208,17 @@ export class Game {
         }
         return;
       }
+    } else if (dispenserIntersects.length > 0) {
+      const dispenser = this.dispensers.find(d => d.mesh === dispenserIntersects[0].object);
+      if (dispenser) {
+        if (this.selectionManager.isSelected(dispenser)) {
+          this.selectionManager.deselect();
+        } else {
+          this.selectionManager.select(dispenser, 'dispenser');
+        }
+        return;
+      }
     } else {
-      // Deselect if clicking empty space
       this.selectionManager.deselect();
     }
     
@@ -174,6 +227,11 @@ export class Game {
       this.isDrawing = true;
       this.wallStart.copy(intersection);
       this.wallEnd.copy(intersection);
+    } else if (event.button === 2) { // Right click
+      // Create dispenser
+      const dispenser = new Dispenser(intersection, this.physics);
+      this.dispensers.push(dispenser);
+      this.scene.add(dispenser.mesh);
     } else {
       // Drop ball on regular click
       this.createBall(intersection);
@@ -341,8 +399,24 @@ export class Game {
     // Update physics
     this.physics.step(deltaTime);
     
-    // Update balls and remove any that are out of bounds
-    this.balls = this.balls.filter(ball => !ball.update());
+    // Update balls and remove any that are out of view
+    this.balls = this.balls.filter(ball => {
+      ball.update();
+      if (ball.shouldRemove(this.camera)) {
+        ball.dispose(this.scene, this.physics);
+        return false;
+      }
+      return true;
+    });
+    
+    // Update dispensers and spawn balls
+    this.dispensers.forEach(dispenser => {
+      const newBall = dispenser.update(currentTime);
+      if (newBall) {
+        this.balls.push(newBall);
+        this.scene.add(newBall.mesh);
+      }
+    });
     
     // Update wall preview if drawing
     if (this.isDrawing) {

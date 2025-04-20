@@ -14,7 +14,10 @@ export class Ball {
       position: new CANNON.Vec3(position.x, position.y, position.z),
       material: world.ballMaterial,
       linearDamping: 0.01,
-      angularDamping: 0.01
+      angularDamping: 0.01,
+      // Set collision groups - only collide with walls, not other balls
+      collisionFilterGroup: world.COLLISION_GROUPS.BALLS,
+      collisionFilterMask: world.COLLISION_GROUPS.WALLS
     });
     
     // Add initial downward velocity
@@ -24,8 +27,10 @@ export class Ball {
     const geometry = new THREE.SphereGeometry(radius, 32, 32);
     const material = new THREE.MeshStandardMaterial({
       color: 0xFFFFFF,
-      roughness: 0.2,
-      metalness: 0.1
+      roughness: 0.1,
+      metalness: 0.3,
+      emissive: new THREE.Color(0x111111),
+      emissiveIntensity: 0.1
     });
     this.mesh = new THREE.Mesh(geometry, material);
     this.mesh.castShadow = true;
@@ -42,6 +47,7 @@ export class Ball {
     this.body.addEventListener('collide', (event) => {
       const targetBody = event.body;
       
+      // Only handle collisions with walls, ignore ball-to-ball collisions
       if (targetBody.userData && targetBody.userData.isWall) {
         const contactNormal = event.contact.ni;
         const impactVelocity = this.body.velocity.dot(contactNormal);
@@ -75,6 +81,7 @@ export class Ball {
         });
         window.dispatchEvent(collisionEvent);
       }
+      // For ball-to-ball collisions, do nothing - they should pass through each other
     });
   }
   
@@ -82,24 +89,6 @@ export class Ball {
     // Update visual position to match physics
     this.mesh.position.copy(this.body.position);
     this.mesh.quaternion.copy(this.body.quaternion);
-    
-    // Check if ball is out of viewport bounds
-    const viewportBounds = {
-      left: -10,
-      right: 10,
-      top: 10,
-      bottom: -10
-    };
-    
-    if (this.body.position.x < viewportBounds.left ||
-        this.body.position.x > viewportBounds.right ||
-        this.body.position.y < viewportBounds.bottom ||
-        this.body.position.y > viewportBounds.top) {
-      // Remove ball from world and scene
-      this.world.removeBody(this.body);
-      this.mesh.parent.remove(this.mesh);
-      return true; // Signal that ball was removed
-    }
     
     // Only apply extra damping at very low velocities
     if (this.body.velocity.lengthSquared() < 0.01) {
