@@ -10,12 +10,6 @@ export class PhysicsWorld {
     this.world.solver.iterations = 50;
     this.world.solver.tolerance = 0.0001;
     
-    // Define collision groups
-    this.COLLISION_GROUPS = {
-      BALLS: 1,
-      WALLS: 2
-    };
-    
     // Create materials
     this.ballMaterial = new CANNON.Material("ballMaterial");
     this.platformMaterial = new CANNON.Material("platformMaterial");
@@ -49,7 +43,9 @@ export class PhysicsWorld {
         friction: 0,
         restitution: 0,
         contactEquationStiffness: 0,  // Zero stiffness means no collision response
-        frictionEquationStiffness: 0
+        frictionEquationStiffness: 0,
+        contactEquationRelaxation: 1,
+        frictionEquationRelaxation: 1
       }
     );
     

@@ -13,8 +13,11 @@ export class EndpointControls {
     const geometry = new THREE.SphereGeometry(0.15, 32, 32);
     const material = new THREE.MeshStandardMaterial({
       color: 0x4CAF50,
+      roughness: 0.5,
+      metalness: 0.7,
       emissive: 0x2E7D32,
-      emissiveIntensity: 0.5
+      emissiveIntensity: 0.2,
+      envMapIntensity: 0.5
     });
     
     const control = new THREE.Mesh(geometry, material);

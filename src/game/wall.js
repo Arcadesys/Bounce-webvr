@@ -22,10 +22,7 @@ export class Wall {
       position: new CANNON.Vec3(center.x, center.y, center.z),
       shape: wallShape,
       material: world.platformMaterial,
-      fixedRotation: true, // Prevent rotation for stability
-      // Set collision groups - walls collide with balls
-      collisionFilterGroup: world.COLLISION_GROUPS.WALLS,
-      collisionFilterMask: world.COLLISION_GROUPS.BALLS
+      fixedRotation: true // Prevent rotation for stability
     });
     
     // Store note information with the wall body
@@ -42,12 +39,14 @@ export class Wall {
     
     // Create visual mesh
     const geometry = new THREE.BoxGeometry(length, 0.2, 0.2);
+    const color = this.getColorForLength(length);
     const material = new THREE.MeshStandardMaterial({
-      color: this.getColorForLength(length),
-      roughness: 0.8,
-      metalness: 0.2,
-      emissive: new THREE.Color(0x000000),
-      emissiveIntensity: 0
+      color: color,
+      roughness: 0.5,
+      metalness: 0.5,
+      emissive: color,
+      emissiveIntensity: 0.2,
+      envMapIntensity: 0.5
     });
     
     this.mesh = new THREE.Mesh(geometry, material);
@@ -102,10 +101,10 @@ export class Wall {
   }
   
   highlight(isHighlighted) {
-    if (this.mesh && this.mesh.material) {
+    if (this.isHighlighted !== isHighlighted) {
       this.isHighlighted = isHighlighted;
-      this.mesh.material.emissive = isHighlighted ? new THREE.Color(0xffff00) : new THREE.Color(0x000000);
-      this.mesh.material.emissiveIntensity = isHighlighted ? 0.5 : 0;
+      this.mesh.material.emissive = isHighlighted ? new THREE.Color(0xffff00) : this.originalColor;
+      this.mesh.material.emissiveIntensity = isHighlighted ? 0.5 : 0.2;
     }
   }
   

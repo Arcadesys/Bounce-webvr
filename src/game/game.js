@@ -7,6 +7,11 @@ import { AudioManager } from '../core/audio/audio-manager.js';
 import { SelectionManager } from '../../utils/SelectionManager.js';
 import { ContextualMenu } from '../ui/contextual-menu.js';
 import { EndpointControls } from '../ui/endpoint-controls.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { DispenserSequencer } from '../core/sequencer/DispenserSequencer.js';
+import { PatternEditor } from '../ui/PatternEditor.js';
 
 export class Game {
   constructor(canvas) {
@@ -26,6 +31,7 @@ export class Game {
     this.initAudio();
     this.initUI();
     this.initInput();
+    this.initSequencer();
     
     // Start game loop
     this.lastTime = performance.now();
@@ -53,6 +59,21 @@ export class Game {
     });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.shadowMap.enabled = true;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.0;
+    
+    // Post-processing setup
+    this.composer = new EffectComposer(this.renderer);
+    const renderPass = new RenderPass(this.scene, this.camera);
+    this.composer.addPass(renderPass);
+    
+    const bloomPass = new UnrealBloomPass(
+      new THREE.Vector2(window.innerWidth, window.innerHeight),
+      0.8,  // strength - reduced from 1.5
+      0.3,  // radius - reduced from 0.4
+      0.9   // threshold - increased from 0.85
+    );
+    this.composer.addPass(bloomPass);
     
     // Lighting
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
@@ -69,6 +90,25 @@ export class Game {
     const secondaryLight = new THREE.DirectionalLight(0xffffff, 0.5);
     secondaryLight.position.set(-10, 15, -15);
     this.scene.add(secondaryLight);
+    
+    // Try to load environment map after a short delay to ensure everything is initialized
+    setTimeout(() => {
+      try {
+        const cubeTextureLoader = new THREE.CubeTextureLoader();
+        const environmentMap = cubeTextureLoader.load([
+          'textures/environmentMap/px.jpg',
+          'textures/environmentMap/nx.jpg',
+          'textures/environmentMap/py.jpg',
+          'textures/environmentMap/ny.jpg',
+          'textures/environmentMap/pz.jpg',
+          'textures/environmentMap/nz.jpg'
+        ]);
+        this.scene.environment = environmentMap;
+        console.log("Environment map loaded successfully");
+      } catch (error) {
+        console.error("Failed to load environment map:", error);
+      }
+    }, 1000);
   }
   
   initPhysics() {
@@ -175,6 +215,42 @@ export class Game {
     window.addEventListener('resize', this.onWindowResize.bind(this));
   }
   
+  initSequencer() {
+    this.sequencer = new DispenserSequencer();
+    this.patternEditor = new PatternEditor(this.sequencer);
+    
+    // Add sequencer controls to UI
+    const controls = document.createElement('div');
+    controls.className = 'sequencer-controls';
+    controls.innerHTML = `
+      <button id="play-pause">Play</button>
+      <input type="range" id="tempo" min="60" max="200" value="120">
+      <span id="tempo-display">120 BPM</span>
+    `;
+    document.body.appendChild(controls);
+    
+    // Set up control handlers
+    const playPauseBtn = document.getElementById('play-pause');
+    const tempoSlider = document.getElementById('tempo');
+    const tempoDisplay = document.getElementById('tempo-display');
+    
+    playPauseBtn.addEventListener('click', () => {
+      if (this.sequencer.isPlaying) {
+        this.sequencer.stop();
+        playPauseBtn.textContent = 'Play';
+      } else {
+        this.sequencer.start();
+        playPauseBtn.textContent = 'Stop';
+      }
+    });
+    
+    tempoSlider.addEventListener('input', (e) => {
+      const bpm = parseInt(e.target.value);
+      this.sequencer.setTempo(bpm);
+      tempoDisplay.textContent = `${bpm} BPM`;
+    });
+  }
+  
   onPointerDown(event) {
     const intersection = this.getIntersectionPoint(event);
     if (!intersection) return;
@@ -213,13 +289,19 @@ export class Game {
       if (dispenser) {
         if (this.selectionManager.isSelected(dispenser)) {
           this.selectionManager.deselect();
+          this.patternEditor.hide();
         } else {
           this.selectionManager.select(dispenser, 'dispenser');
+          // Add dispenser to sequencer when selected
+          this.sequencer.addDispenser(dispenser.id);
+          dispenser.setSequenced(true);
+          this.patternEditor.show(dispenser);
         }
         return;
       }
     } else {
       this.selectionManager.deselect();
+      this.patternEditor.hide();
     }
     
     // If no wall selected and shift is pressed, start drawing
@@ -378,8 +460,13 @@ export class Game {
     const geometry = new THREE.BoxGeometry(length, 0.2, 0.2);
     const material = new THREE.MeshStandardMaterial({
       color: 0x808080,
+      roughness: 0.5,
+      metalness: 0.5,
+      emissive: 0x808080,
+      emissiveIntensity: 0.1,
       transparent: true,
-      opacity: 0.5
+      opacity: 0.7,
+      envMapIntensity: 0.5
     });
     
     this.currentWallMesh = new THREE.Mesh(geometry, material);
@@ -399,22 +486,22 @@ export class Game {
     // Update physics
     this.physics.step(deltaTime);
     
-    // Update balls and remove any that are out of view
+    // Update balls and remove any that are out of bounds
     this.balls = this.balls.filter(ball => {
-      ball.update();
-      if (ball.shouldRemove(this.camera)) {
+      const shouldRemove = ball.update();
+      if (shouldRemove) {
         ball.dispose(this.scene, this.physics);
         return false;
       }
       return true;
     });
     
-    // Update dispensers and spawn balls
+    // Update dispensers
     this.dispensers.forEach(dispenser => {
-      const newBall = dispenser.update(currentTime);
-      if (newBall) {
-        this.balls.push(newBall);
-        this.scene.add(newBall.mesh);
+      const ball = dispenser.update(currentTime);
+      if (ball) {
+        this.balls.push(ball);
+        this.scene.add(ball.mesh);
       }
     });
     
@@ -423,7 +510,7 @@ export class Game {
       this.updateWallPreview();
     }
     
-    // Render scene
-    this.renderer.render(this.scene, this.camera);
+    // Render scene with post-processing
+    this.composer.render();
   }
 } 
