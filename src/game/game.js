@@ -3,6 +3,9 @@ import { PhysicsWorld } from '../core/physics/world.js';
 import { Ball } from './ball.js';
 import { Wall } from './wall.js';
 import { AudioManager } from '../core/audio/audio-manager.js';
+import { SelectionManager } from '../../utils/SelectionManager.js';
+import { ContextualMenu } from '../ui/contextual-menu.js';
+import { EndpointControls } from '../ui/endpoint-controls.js';
 
 export class Game {
   constructor(canvas) {
@@ -13,11 +16,13 @@ export class Game {
     this.wallStart = new THREE.Vector3();
     this.wallEnd = new THREE.Vector3();
     this.currentWallMesh = null;
+    this.hoveredWall = null;
     
     // Initialize systems
     this.initScene();
     this.initPhysics();
     this.initAudio();
+    this.initUI();
     this.initInput();
     
     // Start game loop
@@ -65,12 +70,56 @@ export class Game {
   
   initAudio() {
     this.audio = new AudioManager();
+    this.audio.start();
     
     // Listen for ball collisions
     window.addEventListener('ballCollision', (event) => {
       const { velocity, wallLength, position } = event.detail;
       this.audio.playCollisionSound(velocity, wallLength, position);
     });
+  }
+  
+  initUI() {
+    // Make game instance available globally for UI components
+    window.game = this;
+    
+    // Initialize selection manager
+    this.selectionManager = new SelectionManager();
+    this.selectionManager.setSelectionChangeCallback((object, type) => {
+      if (object && type === 'wall') {
+        this.endpointControls.show(object);
+        this.contextualMenu.show(object.mesh.position, object.mesh);
+      } else {
+        this.endpointControls.hide();
+        this.contextualMenu.hide();
+      }
+    });
+    
+    // Initialize contextual menu
+    this.contextualMenu = new ContextualMenu();
+    this.contextualMenu.setCallbacks({
+      onDelete: () => {
+        const selection = this.selectionManager.getSelection();
+        if (selection.object && selection.type === 'wall') {
+          this.deleteWall(selection.object);
+        }
+      },
+      onChangeMaterial: () => {
+        // TODO: Implement material change
+      }
+    });
+    
+    // Initialize endpoint controls
+    this.endpointControls = new EndpointControls();
+    this.endpointControls.setCallbacks({
+      onEndpointsChanged: (wall) => {
+        // Wall geometry is updated automatically
+      }
+    });
+    
+    // Add endpoint controls to scene
+    this.scene.add(this.endpointControls.startControl);
+    this.scene.add(this.endpointControls.endControl);
   }
   
   initInput() {
@@ -87,9 +136,41 @@ export class Game {
   onPointerDown(event) {
     const intersection = this.getIntersectionPoint(event);
     if (!intersection) return;
-
+    
+    // Check for endpoint control interaction first
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(new THREE.Vector2(
+      (event.clientX / window.innerWidth) * 2 - 1,
+      -(event.clientY / window.innerHeight) * 2 + 1
+    ), this.camera);
+    
+    if (this.endpointControls.onPointerDown(event, this.camera, raycaster)) {
+      return;
+    }
+    
+    // Check for wall selection
+    const wallIntersects = raycaster.intersectObjects(
+      this.walls.map(wall => wall.mesh)
+    );
+    
+    if (wallIntersects.length > 0) {
+      const wall = this.walls.find(w => w.mesh === wallIntersects[0].object);
+      if (wall) {
+        // Deselect if clicking the same wall again
+        if (this.selectionManager.isSelected(wall)) {
+          this.selectionManager.deselect();
+        } else {
+          this.selectionManager.select(wall, 'wall');
+        }
+        return;
+      }
+    } else {
+      // Deselect if clicking empty space
+      this.selectionManager.deselect();
+    }
+    
+    // If no wall selected and shift is pressed, start drawing
     if (event.shiftKey) {
-      // Start drawing beam when shift is pressed
       this.isDrawing = true;
       this.wallStart.copy(intersection);
       this.wallEnd.copy(intersection);
@@ -100,6 +181,48 @@ export class Game {
   }
   
   onPointerMove(event) {
+    // Handle endpoint control movement
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(new THREE.Vector2(
+      (event.clientX / window.innerWidth) * 2 - 1,
+      -(event.clientY / window.innerHeight) * 2 + 1
+    ), this.camera);
+    
+    if (this.endpointControls.onPointerMove(event, this.camera, raycaster)) {
+      return;
+    }
+    
+    // Check for wall hover
+    if (!this.isDrawing) {
+      const wallIntersects = raycaster.intersectObjects(
+        this.walls.map(wall => wall.mesh)
+      );
+      
+      // Handle hover highlighting
+      if (wallIntersects.length > 0) {
+        const wall = this.walls.find(w => w.mesh === wallIntersects[0].object);
+        if (wall && wall !== this.hoveredWall) {
+          // Unhighlight previous wall
+          if (this.hoveredWall) {
+            this.hoveredWall.highlight(false);
+          }
+          
+          // Highlight new wall
+          wall.highlight(true);
+          this.hoveredWall = wall;
+          
+          // Play hover sound
+          if (window.playNote) {
+            window.playNote('A4', '64n', null, 0.1);
+          }
+        }
+      } else if (this.hoveredWall) {
+        // Unhighlight when not hovering any wall
+        this.hoveredWall.highlight(false);
+        this.hoveredWall = null;
+      }
+    }
+    
     if (!this.isDrawing || !event.shiftKey) {
       if (this.isDrawing) {
         // Cancel beam creation if shift is released
@@ -120,6 +243,9 @@ export class Game {
   }
   
   onPointerUp(event) {
+    // Handle endpoint control release
+    this.endpointControls.onPointerUp();
+    
     if (this.isDrawing) {
       this.isDrawing = false;
       if (this.wallStart.distanceTo(this.wallEnd) > 0.2) {
@@ -171,6 +297,15 @@ export class Game {
     const wall = new Wall(start, end, this.physics);
     this.walls.push(wall);
     this.scene.add(wall.mesh);
+  }
+  
+  deleteWall(wall) {
+    const index = this.walls.indexOf(wall);
+    if (index !== -1) {
+      wall.dispose(this.scene, this.physics);
+      this.walls.splice(index, 1);
+      this.selectionManager.deselect();
+    }
   }
   
   updateWallPreview() {
