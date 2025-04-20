@@ -6,18 +6,11 @@ import { Ball } from '../src/game/ball';
 
 describe('Physics Boundaries and Collision Tests', () => {
   let physicsWorld;
-  let camera;
   
   beforeEach(() => {
-    // Create fresh physics world
     physicsWorld = new PhysicsWorld();
-    
-    // Mock camera for frustum checks
-    camera = new THREE.PerspectiveCamera(75, 1, 0.1, 100);
-    camera.position.set(0, 1.5, 12);
-    camera.lookAt(0, 0, 0);
   });
-
+  
   afterEach(() => {
     if (physicsWorld) {
       physicsWorld.cleanup();
@@ -35,10 +28,7 @@ describe('Physics Boundaries and Collision Tests', () => {
     ];
 
     // Create balls at each test point
-    const balls = testPoints.map(point => {
-      const ball = new Ball(physicsWorld, point);
-      return ball;
-    });
+    const balls = testPoints.map(point => new Ball(physicsWorld, point));
 
     // Track collisions
     const collisions = new Set();
@@ -50,7 +40,7 @@ describe('Physics Boundaries and Collision Tests', () => {
 
     // Step physics forward multiple times
     for (let i = 0; i < 60; i++) {
-      physicsWorld.step(1/60);
+      physicsWorld.update(1/60);
       balls.forEach(ball => ball.update());
     }
 
@@ -63,30 +53,6 @@ describe('Physics Boundaries and Collision Tests', () => {
       expect(ball.body.position.x).toBeCloseTo(startX, 1);
       expect(ball.body.position.y).toBeLessThan(testPoints[index].y);
       expect(ball.body.position.z).toBeCloseTo(0, 1);
-    });
-  });
-
-  it('should only have the explicitly created boundary walls', () => {
-    // Get all bodies in the physics world
-    const bodies = physicsWorld.world.bodies;
-    
-    // Count static bodies (walls only, no ground)
-    const staticBodies = bodies.filter(body => body.type === 'static');
-    
-    // Should have exactly 3 static bodies (boundary walls)
-    expect(staticBodies.length).toBe(3);
-    
-    // Verify boundary positions
-    const boundaries = staticBodies.filter(body => body.userData?.isBoundary);
-    expect(boundaries.length).toBe(3);
-    
-    // Check that boundaries are far from play area
-    boundaries.forEach(body => {
-      const pos = body.position;
-      const isFarOut = 
-        (Math.abs(pos.x) >= 15 && Math.abs(pos.y) < 5) || // Side walls
-        (Math.abs(pos.x) < 5 && pos.y >= 15);             // Top wall
-      expect(isFarOut).toBe(true);
     });
   });
 

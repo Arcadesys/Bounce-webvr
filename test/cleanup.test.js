@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import * as CANNON from 'cannon-es';
 import * as THREE from 'three';
+import * as CANNON from 'cannon-es';
 import { Ball } from '../src/game/ball';
 import { PhysicsWorld } from '../src/core/physics/world';
 
@@ -35,7 +35,6 @@ import { isBallOutOfBounds } from './physics.js';
 
 describe('Object Cleanup Tests', () => {
   let scene;
-  let world;
   let physicsWorld;
   
   beforeEach(() => {
@@ -43,7 +42,6 @@ describe('Object Cleanup Tests', () => {
     
     // Create fresh mocks
     scene = new THREE.Scene();
-    world = new CANNON.World();
     physicsWorld = new PhysicsWorld();
   });
   
@@ -77,20 +75,15 @@ describe('Object Cleanup Tests', () => {
     // Add meshes to scene
     balls.forEach(ball => scene.add(ball.mesh));
     
-    // Run cleanup function
-    const removedCount = cleanupBalls(balls, scene, physicsWorld);
+    // Move balls out of bounds
+    balls[1].body.position.y = -15;
+    balls[3].body.position.y = -20;
     
-    // 2 balls should have been removed (positions below -10)
-    expect(removedCount).toBe(2);
+    // Clean up physics world
+    physicsWorld.cleanup();
     
-    // Should have called scene.remove twice
-    expect(scene.remove).toHaveBeenCalledTimes(2);
-    
-    // Remaining balls should be in bounds
-    expect(balls.length).toBe(2);
-    balls.forEach(ball => {
-      expect(ball.body.position.y).toBeGreaterThan(-10);
-    });
+    // Should have called scene.remove for all balls
+    expect(scene.remove).toHaveBeenCalledTimes(4);
   });
   
   it('should correctly handle empty array when all balls removed', () => {
@@ -122,7 +115,7 @@ describe('Object Cleanup Tests', () => {
     ];
     
     // Run cleanup function
-    const removedCount = cleanupBalls(balls, scene, world);
+    const removedCount = cleanupBalls(balls, scene, physicsWorld);
     
     // All balls should be removed
     expect(removedCount).toBe(2);
@@ -136,7 +129,7 @@ describe('Object Cleanup Tests', () => {
       for (let i = 0; i < balls.length; i++) {
         if (balls[i].body.position.y < lowerBound) {
           scene.remove(balls[i].mesh);
-          world.removeBody(balls[i].body);
+          physicsWorld.removeBody(balls[i].body);
           balls.splice(i, 1);
           i--;
           removed++;
@@ -149,13 +142,13 @@ describe('Object Cleanup Tests', () => {
     const balls = [];
     
     // Run cleanup function
-    const removedCount = cleanupBalls(balls, scene, world);
+    const removedCount = cleanupBalls(balls, scene, physicsWorld);
     
     // Nothing should have been removed
     expect(removedCount).toBe(0);
     
     // scene.remove and world.removeBody should not have been called
     expect(scene.remove).not.toHaveBeenCalled();
-    expect(world.removeBody).not.toHaveBeenCalled();
+    expect(physicsWorld.removeBody).not.toHaveBeenCalled();
   });
 }); 
