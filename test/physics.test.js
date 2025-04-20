@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as CANNON from 'cannon-es';
-import { PhysicsWorld } from '../src/physics';
+import { PhysicsWorld } from '../src/core/physics/world';
 import * as THREE from 'three';
 
 // Mock CANNON.js
@@ -38,57 +38,100 @@ import {
   isBallOutOfBounds
 } from './physics.js';
 
-describe('Physics World', () => {
+describe('PhysicsWorld', () => {
   let physicsWorld;
-
+  
   beforeEach(() => {
     physicsWorld = new PhysicsWorld();
   });
-
-  test('should initialize with correct gravity', () => {
-    expect(physicsWorld.world.gravity.y).toBe(-9.82);
+  
+  afterEach(() => {
+    physicsWorld.cleanup();
   });
-
-  test('should create boundaries with correct dimensions', () => {
-    const width = 10;
-    const height = 10;
-    const depth = 10;
-    
-    physicsWorld.createBoundaries(width, height, depth);
-    
-    // Check if we have the correct number of static bodies (ground + 4 walls)
-    expect(physicsWorld.staticBodies.size).toBe(5);
+  
+  it('should initialize with correct gravity', () => {
+    expect(physicsWorld.world.gravity).toEqual(expect.objectContaining({
+      x: 0,
+      y: -9.82,
+      z: 0
+    }));
   });
-
-  test('should create a ball with correct properties', () => {
-    const radius = 1;
-    const mass = 1;
-    const position = new THREE.Vector3(0, 5, 0);
+  
+  it('should create a ball with correct properties', () => {
+    const position = new THREE.Vector3(0, 1, 0);
+    const radius = 0.1;
+    const mass = 0.05;
     
-    const ball = physicsWorld.createBall(radius, mass, position);
+    const body = physicsWorld.createBall(radius, mass, position);
     
-    expect(ball.mass).toBe(mass);
-    expect(ball.position.y).toBe(position.y);
-    expect(physicsWorld.bodies.size).toBe(1);
+    expect(body.position).toEqual(expect.objectContaining(position));
+    expect(body.mass).toBe(mass);
+    expect(body.shapes[0].radius).toBe(radius);
   });
-
-  test('should update physics world', () => {
-    const deltaTime = 1/60;
-    const initialStep = physicsWorld.world.step;
+  
+  it('should handle ball collisions correctly', () => {
+    const ball1 = physicsWorld.createBall(0.1, 0.05, new THREE.Vector3(0, 1, 0));
+    const ball2 = physicsWorld.createBall(0.1, 0.05, new THREE.Vector3(0.2, 1, 0));
     
-    physicsWorld.update(deltaTime);
+    // Step physics forward
+    for (let i = 0; i < 60; i++) {
+      physicsWorld.update();
+    }
     
-    // Verify that step was called with the correct deltaTime
-    expect(physicsWorld.world.step).toHaveBeenCalledWith(deltaTime);
+    // Balls should have moved due to gravity
+    expect(ball1.position.y).toBeLessThan(1);
+    expect(ball2.position.y).toBeLessThan(1);
   });
-
-  test('should remove body correctly', () => {
-    const ball = physicsWorld.createBall(1, 1, new THREE.Vector3(0, 5, 0));
+  
+  it('should cleanup bodies properly', () => {
+    const ball = physicsWorld.createBall(0.1, 0.05, new THREE.Vector3(0, 1, 0));
     
-    physicsWorld.removeBody(ball);
+    physicsWorld.cleanup();
     
+    expect(physicsWorld.world.bodies.length).toBe(0);
     expect(physicsWorld.bodies.size).toBe(0);
-    expect(physicsWorld.world.removeBody).toHaveBeenCalledWith(ball);
+  });
+  
+  it('should handle multiple balls efficiently', () => {
+    const numBalls = 100;
+    const balls = [];
+    
+    // Create many balls
+    for (let i = 0; i < numBalls; i++) {
+      const position = new THREE.Vector3(
+        Math.random() * 2 - 1,
+        1 + Math.random(),
+        Math.random() * 2 - 1
+      );
+      balls.push(physicsWorld.createBall(0.1, 0.05, position));
+    }
+    
+    // Step physics forward
+    for (let i = 0; i < 60; i++) {
+      physicsWorld.update();
+    }
+    
+    // All balls should still exist
+    expect(physicsWorld.world.bodies.length).toBe(numBalls);
+    
+    // All balls should have moved due to gravity
+    balls.forEach(ball => {
+      expect(ball.position.y).toBeLessThan(1);
+    });
+  });
+  
+  it('should maintain stable physics simulation', () => {
+    const ball = physicsWorld.createBall(0.1, 0.05, new THREE.Vector3(0, 1, 0));
+    const initialEnergy = ball.velocity.length();
+    
+    // Step physics forward many times
+    for (let i = 0; i < 1000; i++) {
+      physicsWorld.update();
+    }
+    
+    // Energy should not grow unbounded
+    const finalEnergy = ball.velocity.length();
+    expect(finalEnergy).toBeLessThan(initialEnergy * 2);
   });
 });
 

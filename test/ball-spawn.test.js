@@ -1,17 +1,24 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
+import { BallDispenser } from '../src/game/ball';
 
 // This test isolates and tests the ball spawning fixes we made in the dispenser code
 
 describe('Ball Spawning', () => {
   let positions = [];
   let velocities = [];
+  let announcer;
   
   beforeEach(() => {
     // Reset test data
     positions = [];
     velocities = [];
+    
+    // Mock announcer for accessibility
+    announcer = document.createElement('div');
+    announcer.id = 'announcer';
+    document.body.appendChild(announcer);
     
     // Generate multiple spawn positions using our improved algorithm
     for (let i = 0; i < 50; i++) {
@@ -34,6 +41,10 @@ describe('Ball Spawning', () => {
       positions.push(ballPosition);
       velocities.push(ballVelocity);
     }
+  });
+  
+  afterEach(() => {
+    document.body.removeChild(announcer);
   });
 
   it('should generate different spawn positions for each ball', () => {
@@ -121,5 +132,20 @@ describe('Ball Spawning', () => {
     
     // All positions should be unique
     expect(uniquePositions.size).toEqual(positions.length);
+  });
+  
+  it('should announce ball creation for accessibility', () => {
+    // Mock playNote function
+    window.playNote = vi.fn();
+    
+    // Create a ball
+    const dispenser = new BallDispenser(new CANNON.World(), new THREE.Vector3(0, 5, 0));
+    dispenser.createBall();
+    
+    // Check that announcer was updated
+    expect(announcer.textContent).toContain('Ball created');
+    
+    // Check that creation sound was played
+    expect(window.playNote).toHaveBeenCalledWith('E4', '32n', null, 0.2);
   });
 }); 

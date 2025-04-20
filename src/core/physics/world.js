@@ -1,4 +1,5 @@
 import * as CANNON from 'cannon-es';
+import * as THREE from 'three';
 
 export class PhysicsWorld {
   constructor() {
@@ -6,77 +7,109 @@ export class PhysicsWorld {
       gravity: new CANNON.Vec3(0, -9.82, 0)
     });
     
-    // Improve solver for better physics
+    // Set up collision detection
+    this.world.broadphase = new CANNON.NaiveBroadphase();
     this.world.solver.iterations = 20;
-    this.world.solver.tolerance = 0.0001;
+    this.world.solver.tolerance = 0.001;
     
     // Create materials
-    this.ballMaterial = new CANNON.Material("ballMaterial");
-    this.platformMaterial = new CANNON.Material("platformMaterial");
+    this.ballMaterial = new CANNON.Material('ballMaterial');
+    this.wallMaterial = new CANNON.Material('wallMaterial');
     
-    // Configure materials with very low friction
-    this.ballMaterial.friction = 0.01;
-    this.ballMaterial.restitution = 0.9;
-    
-    this.platformMaterial.friction = 0.01;
-    this.platformMaterial.restitution = 0.9;
-    
-    // Create contact material with minimal friction
-    this.contactMaterial = new CANNON.ContactMaterial(
+    // Create contact material between balls and walls
+    const ballWallContact = new CANNON.ContactMaterial(
       this.ballMaterial,
-      this.platformMaterial,
+      this.wallMaterial,
       {
-        friction: 0.01,
+        friction: 0.1,
         restitution: 0.9,
         contactEquationRelaxation: 3,
-        frictionEquationStiffness: 1e6,
         contactEquationStiffness: 1e6
       }
     );
     
-    this.world.addContactMaterial(this.contactMaterial);
+    // Create contact material between balls
+    const ballBallContact = new CANNON.ContactMaterial(
+      this.ballMaterial,
+      this.ballMaterial,
+      {
+        friction: 0.0,
+        restitution: 0.9,
+        contactEquationRelaxation: 3,
+        contactEquationStiffness: 1e6
+      }
+    );
+    
+    this.world.addContactMaterial(ballWallContact);
+    this.world.addContactMaterial(ballBallContact);
+    
+    // Set default contact material
+    this.world.defaultContactMaterial.friction = 0.1;
+    this.world.defaultContactMaterial.restitution = 0.9;
+    
+    // Track bodies
+    this.bodies = new Set();
   }
   
-  step(dt) {
-    this.world.step(1/60, dt);
-  }
-  
-  addBody(body) {
+  createBall(radius, mass, position) {
+    const shape = new CANNON.Sphere(radius);
+    const body = new CANNON.Body({
+      mass: mass,
+      shape: shape,
+      material: this.ballMaterial,
+      position: new CANNON.Vec3(position.x, position.y, position.z),
+      linearDamping: 0.01,
+      angularDamping: 0.01,
+      allowSleep: false // Prevent bodies from sleeping
+    });
+    
     this.world.addBody(body);
+    this.bodies.add(body);
+    return body;
+  }
+  
+  createWall(start, end) {
+    // Calculate wall dimensions
+    const direction = new THREE.Vector3().subVectors(end, start);
+    const length = direction.length();
+    const center = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
+    
+    // Create wall shape - thicker to prevent tunneling
+    const shape = new CANNON.Box(new CANNON.Vec3(length/2, 0.5, 0.5));
+    const body = new CANNON.Body({
+      mass: 0, // Static body
+      shape: shape,
+      material: this.wallMaterial,
+      position: new CANNON.Vec3(center.x, center.y, center.z)
+    });
+    
+    // Calculate rotation
+    const angle = Math.atan2(direction.y, direction.x);
+    body.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 0, 1), angle);
+    
+    this.world.addBody(body);
+    this.bodies.add(body);
+    return body;
+  }
+  
+  update(timestep = 1/60) {
+    // Allow variable timestep
+    this.world.step(timestep);
+  }
+  
+  cleanup() {
+    this.bodies.forEach(body => {
+      this.world.removeBody(body);
+    });
+    this.bodies.clear();
   }
   
   removeBody(body) {
     this.world.removeBody(body);
+    this.bodies.delete(body);
   }
   
-  // Helper method to create boundary walls
-  createBoundary(x, y, length, width, rotX, rotY) {
-    const boundaryShape = new CANNON.Box(new CANNON.Vec3(width/2, length/2, 0.1));
-    const boundaryBody = new CANNON.Body({
-      mass: 0,
-      position: new CANNON.Vec3(x, y, 0),
-      shape: boundaryShape,
-      material: this.platformMaterial
-    });
-    
-    // Fix rotation to use proper axis
-    const quat = new CANNON.Quaternion();
-    if (rotX !== 0) {
-      quat.setFromAxisAngle(new CANNON.Vec3(0, 0, 1), rotX);
-    }
-    if (rotY !== 0) {
-      const quatY = new CANNON.Quaternion();
-      quatY.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), rotY);
-      quat.mult(quatY, quat);
-    }
-    boundaryBody.quaternion.copy(quat);
-    
-    boundaryBody.userData = {
-      isBoundary: true,
-      restitution: 0.7
-    };
-    
-    this.world.addBody(boundaryBody);
-    return boundaryBody;
+  setGravity(x, y, z) {
+    this.world.gravity.set(x, y, z);
   }
 } 
