@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as CANNON from 'cannon-es';
 import * as THREE from 'three';
-import { PhysicsWorld } from '../src/core/physics/world.js';
-import { Ball } from '../src/game/ball.js';
+import { PhysicsWorld } from '../src/core/physics/world';
+import { Ball } from '../src/game/ball';
 
 describe('Physics Boundaries and Collision Tests', () => {
   let physicsWorld;
@@ -18,6 +18,12 @@ describe('Physics Boundaries and Collision Tests', () => {
     camera.lookAt(0, 0, 0);
   });
 
+  afterEach(() => {
+    if (physicsWorld) {
+      physicsWorld.cleanup();
+    }
+  });
+
   it('should allow balls to fall straight down without hitting invisible walls', () => {
     // Create test points across the visible area
     const testPoints = [
@@ -30,7 +36,7 @@ describe('Physics Boundaries and Collision Tests', () => {
 
     // Create balls at each test point
     const balls = testPoints.map(point => {
-      const ball = new Ball(point, 0.1, physicsWorld);
+      const ball = new Ball(physicsWorld, point);
       return ball;
     });
 
@@ -86,7 +92,7 @@ describe('Physics Boundaries and Collision Tests', () => {
 
   it('should allow balls to fall through the visible play area without collisions', () => {
     // Create a ball in the center
-    const ball = new Ball({ x: 0, y: 2, z: 0 }, 0.1, physicsWorld);
+    const ball = new Ball(physicsWorld, { x: 0, y: 2, z: 0 });
     let collisionDetected = false;
 
     // Add collision detection
@@ -96,7 +102,7 @@ describe('Physics Boundaries and Collision Tests', () => {
 
     // Step physics until ball would have hit any invisible barrier
     for (let i = 0; i < 120; i++) {
-      physicsWorld.step(1/60);
+      physicsWorld.update(1/60);
       ball.update();
 
       // Stop if collision detected

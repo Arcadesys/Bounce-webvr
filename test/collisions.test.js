@@ -16,8 +16,8 @@ describe('Physics Collisions', () => {
     physicsWorld.world.gravity.set(0, -9.82, 0); // Ensure gravity is set
     
     // Create balls with smaller radius for more precise testing
-    ball1 = new Ball(physicsWorld, { x: -0.5, y: 0.5, z: 0 }, { radius: 0.1 });
-    ball2 = new Ball(physicsWorld, { x: 0.5, y: 0.5, z: 0 }, { radius: 0.1 });
+    ball1 = new Ball(physicsWorld, { x: -0.5, y: 0.5, z: 0 });
+    ball2 = new Ball(physicsWorld, { x: 0.5, y: 0.5, z: 0 });
     
     // Create wall
     const wallStart = new THREE.Vector3(-1, 0, 0);
@@ -51,7 +51,7 @@ describe('Physics Collisions', () => {
   afterEach(() => {
     // Clean up physics world
     if (physicsWorld) {
-      physicsWorld.dispose();
+      physicsWorld.cleanup();
     }
   });
   
@@ -126,7 +126,7 @@ describe('Physics Collisions', () => {
   
   it('should conserve momentum in elastic collisions', async () => {
     // Disable gravity for this test
-    physicsWorld.world.gravity.set(0, 0, 0);
+    physicsWorld.setGravity(0, 0, 0);
     
     // Position balls for direct collision
     ball1.body.position.set(-0.5, 0.5, 0);
