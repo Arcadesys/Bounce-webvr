@@ -56,29 +56,6 @@
       clip: rect(0, 0, 0, 0);
       border: 0;
     }
-    
-    .instructions {
-      position: fixed;
-      bottom: 20px;
-      left: 20px;
-      background: rgba(0, 0, 0, 0.7);
-      padding: 15px;
-      border-radius: 8px;
-      color: white;
-      max-width: 300px;
-    }
-    
-    .instructions h2 {
-      margin-top: 0;
-    }
-    
-    .instructions ul {
-      padding-left: 20px;
-    }
-    
-    .instructions li {
-      margin: 8px 0;
-    }
   </style>
 </head>
 <body>
@@ -88,17 +65,6 @@
     <button id="sound-toggle" aria-label="Toggle Sound" title="Toggle Sound">🔊</button>
     <button id="clear-all" aria-label="Clear All Objects" title="Clear All Objects">🗑️ Clear All</button>
     <button id="help-toggle" aria-label="Toggle Help" title="Toggle Help">❓ Help</button>
-  </div>
-  
-  <div class="instructions" id="instructions" role="region" aria-label="Game Instructions">
-    <h2>How to Play</h2>
-    <ul>
-      <li>Click and drag to create walls</li>
-      <li>Tap/click to drop balls</li>
-      <li>Walls play musical notes when hit</li>
-      <li>Longer walls play higher notes</li>
-      <li>Use the sound toggle for audio feedback</li>
-    </ul>
   </div>
   
   <div id="announcer" aria-live="polite" aria-atomic="true"></div>
@@ -125,11 +91,9 @@
         // TODO: Implement clear all functionality
       });
       
-      // Handle help toggle
+      // Handle help toggle - removed since instructions div is gone
       document.getElementById('help-toggle').addEventListener('click', () => {
-        const instructions = document.getElementById('instructions');
-        const isVisible = instructions.style.display !== 'none';
-        instructions.style.display = isVisible ? 'none' : 'block';
+        // TODO: Implement new help functionality if needed
       });
     });
   </script>
