@@ -57,28 +57,15 @@ export class Game {
     directionalLight.shadow.mapSize.width = 2048;
     directionalLight.shadow.mapSize.height = 2048;
     this.scene.add(directionalLight);
-    
-    // Ground plane
-    const groundGeometry = new THREE.PlaneGeometry(4, 4);
-    const groundMaterial = new THREE.MeshStandardMaterial({
-      color: 0x228B22,
-      roughness: 0.7,
-      metalness: 0.1
-    });
-    const ground = new THREE.Mesh(groundGeometry, groundMaterial);
-    ground.rotation.x = -Math.PI / 2;
-    ground.position.y = -2;
-    ground.receiveShadow = true;
-    this.scene.add(ground);
   }
   
   initPhysics() {
     this.physics = new PhysicsWorld();
     
-    // Create boundary walls
-    this.physics.createBoundary(-1, -1, 4, 0.5, 0, Math.PI / 2); // Left
-    this.physics.createBoundary(1, -1, 4, 0.5, 0, Math.PI / 2);  // Right
-    this.physics.createBoundary(0, 1, 4, 0.5, Math.PI / 2, 0);   // Top
+    // Create boundary walls - only at the edges of our play space
+    this.physics.createBoundary(-1, 0, 4, 0.5, Math.PI / 2, 0); // Left
+    this.physics.createBoundary(1, 0, 4, 0.5, Math.PI / 2, 0);  // Right
+    this.physics.createBoundary(0, 1, 2, 0.5, 0, 0);   // Top
   }
   
   initAudio() {
@@ -223,7 +210,7 @@ export class Game {
       const ball = this.balls[i];
       ball.update();
       
-      if (ball.shouldRemove()) {
+      if (ball.shouldRemove(this.camera)) {
         ball.dispose(this.scene, this.physics);
         this.balls.splice(i, 1);
       }

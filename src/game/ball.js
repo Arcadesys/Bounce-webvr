@@ -17,7 +17,7 @@ export class Ball {
     });
     
     // Add initial downward velocity
-    this.body.velocity.set(0, -0.2, 0);
+    this.body.velocity.set(0, -2, 0);
     
     // Create visual mesh
     const geometry = new THREE.SphereGeometry(radius, 32, 32);
@@ -45,7 +45,7 @@ export class Ball {
         const contactNormal = event.contact.ni;
         const impactVelocity = this.body.velocity.dot(contactNormal);
         
-        const restitution = 0.97;
+        const restitution = 0.9;
         const bounce = -impactVelocity * (1 + restitution);
         
         const impulse = new CANNON.Vec3(
@@ -55,6 +55,14 @@ export class Ball {
         );
         
         this.body.applyImpulse(impulse, this.body.position);
+        
+        // Smaller random impulse to maintain momentum
+        const randomImpulse = new CANNON.Vec3(
+          (Math.random() - 0.5) * 0.0005,
+          (Math.random() - 0.5) * 0.0005,
+          (Math.random() - 0.5) * 0.0005
+        );
+        this.body.applyImpulse(randomImpulse, this.body.position);
         
         // Emit collision event for sound handling
         const collisionEvent = new CustomEvent('ballCollision', {
@@ -66,11 +74,6 @@ export class Ball {
         });
         window.dispatchEvent(collisionEvent);
       }
-      
-      if (targetBody.userData && targetBody.userData.isGround) {
-        this.body.userData = this.body.userData || {};
-        this.body.userData.shouldRemove = true;
-      }
     });
   }
   
@@ -79,15 +82,25 @@ export class Ball {
     this.mesh.position.copy(this.body.position);
     this.mesh.quaternion.copy(this.body.quaternion);
     
-    // Apply additional damping when nearly at rest
-    if (this.body.velocity.lengthSquared() < 0.05) {
-      this.body.linearDamping = Math.min(this.body.linearDamping * 1.01, 0.95);
+    // Only apply extra damping at very low velocities
+    if (this.body.velocity.lengthSquared() < 0.01) {
+      this.body.linearDamping = Math.min(this.body.linearDamping * 1.01, 0.1);
+    } else {
+      this.body.linearDamping = 0.01;  // Reset damping when moving
     }
   }
   
-  shouldRemove() {
-    return (this.body.userData && this.body.userData.shouldRemove) || 
-           this.body.position.y < -10;
+  shouldRemove(camera) {
+    // Create a frustum from the camera
+    const frustum = new THREE.Frustum();
+    const matrix = new THREE.Matrix4().multiplyMatrices(
+      camera.projectionMatrix,
+      camera.matrixWorldInverse
+    );
+    frustum.setFromProjectionMatrix(matrix);
+    
+    // Check if the ball's position is outside the frustum
+    return !frustum.containsPoint(this.mesh.position);
   }
   
   dispose(scene, world) {

@@ -7,30 +7,30 @@ export class PhysicsWorld {
     });
     
     // Improve solver for better physics
-    this.world.solver.iterations = 10;
-    this.world.solver.tolerance = 0.001;
+    this.world.solver.iterations = 20;
+    this.world.solver.tolerance = 0.0001;
     
     // Create materials
     this.ballMaterial = new CANNON.Material("ballMaterial");
     this.platformMaterial = new CANNON.Material("platformMaterial");
     
-    // Configure materials
-    this.ballMaterial.friction = 0.2;
-    this.ballMaterial.restitution = 0.8;
+    // Configure materials with very low friction
+    this.ballMaterial.friction = 0.01;
+    this.ballMaterial.restitution = 0.9;
     
-    this.platformMaterial.friction = 0.3;
+    this.platformMaterial.friction = 0.01;
     this.platformMaterial.restitution = 0.9;
     
-    // Create contact material
+    // Create contact material with minimal friction
     this.contactMaterial = new CANNON.ContactMaterial(
       this.ballMaterial,
       this.platformMaterial,
       {
-        friction: 0.1,
-        restitution: 0.97,
+        friction: 0.01,
+        restitution: 0.9,
         contactEquationRelaxation: 3,
-        frictionEquationStiffness: 1e7,
-        contactEquationStiffness: 1e8
+        frictionEquationStiffness: 1e6,
+        contactEquationStiffness: 1e6
       }
     );
     
@@ -43,7 +43,8 @@ export class PhysicsWorld {
       material: this.platformMaterial
     });
     groundBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
-    groundBody.position.y = -2;
+    groundBody.position.y = -4;
+    groundBody.position.z = 0.1; // Move slightly forward in Z
     groundBody.userData = { isGround: true };
     this.world.addBody(groundBody);
   }
@@ -62,7 +63,7 @@ export class PhysicsWorld {
   
   // Helper method to create boundary walls
   createBoundary(x, y, length, width, rotX, rotY) {
-    const boundaryShape = new CANNON.Box(new CANNON.Vec3(length/2, width/2, 0.1));
+    const boundaryShape = new CANNON.Box(new CANNON.Vec3(width/2, length/2, 0.1));
     const boundaryBody = new CANNON.Body({
       mass: 0,
       position: new CANNON.Vec3(x, y, 0),
@@ -71,15 +72,12 @@ export class PhysicsWorld {
     });
     
     const quat = new CANNON.Quaternion();
-    quat.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), rotX);
-    const quat2 = new CANNON.Quaternion();
-    quat2.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), rotY);
-    quat.mult(quat2, quat);
+    quat.setFromAxisAngle(new CANNON.Vec3(0, 0, 1), rotX);
     boundaryBody.quaternion.copy(quat);
     
     boundaryBody.userData = {
       isBoundary: true,
-      restitution: 0.97
+      restitution: 0.7
     };
     
     this.world.addBody(boundaryBody);
