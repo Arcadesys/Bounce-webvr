@@ -481,7 +481,7 @@ export class Game {
   }
   
   createBall(position) {
-    const ball = new Ball(position, 0.1, this.physics);
+    const ball = new Ball(position, 0.1, this.physics.world);
     this.balls.push(ball);
     this.scene.add(ball.mesh);
     
