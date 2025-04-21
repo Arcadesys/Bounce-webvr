@@ -158,7 +158,6 @@ export class Game {
         } else {
           this.endpointControls.hide();
         }
-        this.contextualMenu.show(object.mesh.position, object.mesh);
       } else {
         this.endpointControls.hide();
         this.contextualMenu.hide();
@@ -312,6 +311,7 @@ export class Game {
           this.selectionManager.deselect();
         } else {
           this.selectionManager.select(wall, 'wall');
+          this.contextualMenu.toggle(wall.mesh.position, wall.mesh);
         }
         return;
       }
@@ -320,9 +320,11 @@ export class Game {
       if (dispenser) {
         if (this.selectionManager.isSelected(dispenser)) {
           this.selectionManager.deselect();
+          this.contextualMenu.hide();
           this.patternEditor.hide();
         } else {
           this.selectionManager.select(dispenser, 'dispenser');
+          this.contextualMenu.toggle(dispenser.mesh.position, dispenser.mesh);
           // Add dispenser to sequencer when selected
           this.sequencer.addDispenser(dispenser.id);
           dispenser.setSequenced(true);
@@ -330,25 +332,34 @@ export class Game {
         }
         return;
       }
-    } else {
-      this.selectionManager.deselect();
-      this.patternEditor.hide();
     }
     
-    // If no wall selected and shift is pressed, start drawing
+    // If shift is pressed, start drawing wall
     if (event.shiftKey) {
       this.isDrawing = true;
       this.wallStart.copy(intersection);
       this.wallEnd.copy(intersection);
-    } else if (event.button === 2) { // Right click
-      // Create dispenser
+      return;
+    }
+    
+    // Handle empty space click
+    if (!wallIntersects.length && !dispenserIntersects.length) {
+      this.selectionManager.deselect();
+      this.contextualMenu.hide();
+      this.patternEditor.hide();
+      return;
+    }
+    
+    // Handle right click to create dispenser
+    if (event.button === 2) {
       const dispenser = new Dispenser(intersection, this.physics);
       this.dispensers.push(dispenser);
       this.scene.add(dispenser.mesh);
-    } else {
-      // Drop ball on regular click
-      this.createBall(intersection);
+      return;
     }
+    
+    // Drop ball on regular click
+    this.createBall(intersection);
   }
   
   onPointerMove(event) {

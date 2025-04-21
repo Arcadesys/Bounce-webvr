@@ -18,6 +18,7 @@ export class ContextualMenu {
     
     this.menu.setAttribute('role', 'menu');
     document.body.appendChild(this.menu);
+    this.isVisible = false;
     
     // Add menu items
     this.addMenuItem('Delete', () => {
@@ -39,7 +40,7 @@ export class ContextualMenu {
     
     // Close menu when clicking outside
     document.addEventListener('click', (e) => {
-      if (this.menu.style.display === 'block' && !this.menu.contains(e.target)) {
+      if (this.isVisible && !this.menu.contains(e.target)) {
         this.hide();
       }
     });
@@ -84,6 +85,14 @@ export class ContextualMenu {
     this.menu.appendChild(item);
   }
   
+  toggle(position, object) {
+    if (this.isVisible) {
+      this.hide();
+    } else {
+      this.show(position, object);
+    }
+  }
+  
   show(position, object) {
     // Convert 3D position to screen coordinates
     const vector = new THREE.Vector3();
@@ -97,6 +106,7 @@ export class ContextualMenu {
     this.menu.style.left = `${x + 20}px`;
     this.menu.style.top = `${y}px`;
     this.menu.style.display = 'block';
+    this.isVisible = true;
     
     // Focus first menu item for keyboard navigation
     const firstItem = this.menu.querySelector('button');
@@ -118,6 +128,7 @@ export class ContextualMenu {
   
   hide() {
     this.menu.style.display = 'none';
+    this.isVisible = false;
     
     // Play menu close sound
     if (window.playNote) {
