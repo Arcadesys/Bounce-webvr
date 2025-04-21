@@ -221,6 +221,17 @@ export class Game {
     this.canvas.addEventListener('mouseup', this.onPointerUp.bind(this));
     this.canvas.addEventListener('touchstart', this.onTouchStart.bind(this));
     
+    // Keyboard input handling
+    window.addEventListener('keydown', (event) => {
+      if (event.code === 'Space') {
+        // Create a ball at a random position above the play area
+        const x = (Math.random() - 0.5) * 10; // Random x between -5 and 5
+        const y = 10; // Start above the play area
+        const z = (Math.random() - 0.5) * 10; // Random z between -5 and 5
+        this.createBall(new THREE.Vector3(x, y, z));
+      }
+    });
+    
     // Prevent context menu on right click
     this.canvas.addEventListener('contextmenu', (event) => {
       event.preventDefault();
