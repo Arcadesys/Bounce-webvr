@@ -428,4 +428,51 @@ describe('Advanced Collision Scenarios', () => {
     // Cleanup
     global.notifyCollisionEvent = undefined;
   });
+});
+
+describe('Ball-to-Ball Interaction', () => {
+  let world;
+  let ball1, ball2;
+  
+  beforeEach(() => {
+    // Create a fresh physics world for each test
+    world = createPhysicsWorld();
+    
+    // Create two balls in close proximity
+    ball1 = createBallBody(
+      { x: 0, y: 0, z: 0 },
+      0.1,  // radius
+      world
+    );
+    
+    ball2 = createBallBody(
+      { x: 0.15, y: 0, z: 0 },  // Slightly offset, should overlap
+      0.1,  // radius
+      world
+    );
+    
+    // Set initial velocities towards each other
+    ball1.velocity.set(1, 0, 0);   // Moving right
+    ball2.velocity.set(-1, 0, 0);  // Moving left
+  });
+  
+  it('should allow balls to pass through each other', () => {
+    // Record initial positions and velocities
+    const ball1InitialVel = ball1.velocity.clone();
+    const ball2InitialVel = ball2.velocity.clone();
+    
+    // Step physics world a few times
+    for (let i = 0; i < 10; i++) {
+      world.step(1/60);
+    }
+    
+    // Velocities should remain unchanged since there should be no collision
+    expect(ball1.velocity.x).toBeCloseTo(ball1InitialVel.x);
+    expect(ball1.velocity.y).toBeCloseTo(ball1InitialVel.y);
+    expect(ball2.velocity.x).toBeCloseTo(ball2InitialVel.x);
+    expect(ball2.velocity.y).toBeCloseTo(ball2InitialVel.y);
+    
+    // Balls should have passed through each other
+    expect(ball1.position.x).toBeGreaterThan(ball2.position.x);
+  });
 }); 

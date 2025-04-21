@@ -41,14 +41,15 @@ export const VisualConfig = {
   // Wall settings
   wall: {
     base: {
-      roughness: 0.5,
-      metalness: 0.5,
-      emissiveIntensity: 0.5,
-      envMapIntensity: 1.25
+      color: 0xFFFFFF,
+      roughness: 0.8,    // Increased for more diffusion
+      metalness: 0.2,    // Reduced for less reflection
+      emissiveIntensity: 0.15,  // Reduced for softer glow
+      envMapIntensity: 0.5     // Reduced for less reflection
     },
     highlight: {
-      color: 0xffff00,
-      intensity: 1.0
+      color: 0xFFFFFF,   // Changed to white
+      intensity: 0.3     // Reduced for subtler highlight
     }
   }
 };

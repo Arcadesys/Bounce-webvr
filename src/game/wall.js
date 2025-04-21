@@ -26,6 +26,10 @@ export class Wall {
       fixedRotation: true // Prevent rotation for stability
     });
     
+    // Set collision group for walls
+    this.body.collisionFilterGroup = 1;  // Group for walls
+    this.body.collisionFilterMask = 2;   // Only collide with group 2 (balls)
+    
     // Store note information with the wall body
     this.body.userData = {
       note: this.getNoteForLength(length),
@@ -40,13 +44,12 @@ export class Wall {
     
     // Create visual mesh
     const geometry = new THREE.BoxGeometry(length, 0.2, 0.2);
-    const color = this.getColorForLength(length);
     const config = VisualConfig.wall.base;
     const material = new THREE.MeshStandardMaterial({
-      color: color,
+      color: config.color,
       roughness: config.roughness,
       metalness: config.metalness,
-      emissive: color,
+      emissive: config.color,
       emissiveIntensity: config.emissiveIntensity,
       envMapIntensity: config.envMapIntensity
     });

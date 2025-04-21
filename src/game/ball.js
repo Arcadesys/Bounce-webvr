@@ -53,8 +53,13 @@ export class Ball {
       position: new CANNON.Vec3(position.x, position.y, position.z),
       material: world.ballMaterial,
       linearDamping: 0.01,
-      angularDamping: 0.01
+      angularDamping: 0.01,
+      collisionResponse: false  // Disable collision response with other balls
     });
+    
+    // Enable collision response only for walls
+    this.body.collisionFilterGroup = 2;  // Group for balls
+    this.body.collisionFilterMask = 1;   // Only collide with group 1 (walls)
     
     // Add initial downward velocity
     this.body.velocity.set(0, -2, 0);
