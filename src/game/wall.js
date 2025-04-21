@@ -1,5 +1,6 @@
 import * as CANNON from 'cannon-es';
 import * as THREE from 'three';
+import { VisualConfig } from '../core/config/visualConfig.js';
 
 export class Wall {
   constructor(start, end, world) {
@@ -40,13 +41,14 @@ export class Wall {
     // Create visual mesh
     const geometry = new THREE.BoxGeometry(length, 0.2, 0.2);
     const color = this.getColorForLength(length);
+    const config = VisualConfig.wall.base;
     const material = new THREE.MeshStandardMaterial({
       color: color,
-      roughness: 0.5,
-      metalness: 0.5,
+      roughness: config.roughness,
+      metalness: config.metalness,
       emissive: color,
-      emissiveIntensity: 0.2,
-      envMapIntensity: 0.5
+      emissiveIntensity: config.emissiveIntensity,
+      envMapIntensity: config.envMapIntensity
     });
     
     this.mesh = new THREE.Mesh(geometry, material);
@@ -57,6 +59,7 @@ export class Wall {
     
     // Store original color for hover effect
     this.originalColor = material.color.clone();
+    this.originalEmissiveIntensity = config.emissiveIntensity;
   }
   
   updateStart(newStart) {
@@ -101,10 +104,11 @@ export class Wall {
   }
   
   highlight(isHighlighted) {
+    const config = VisualConfig.wall.highlight;
     if (this.isHighlighted !== isHighlighted) {
       this.isHighlighted = isHighlighted;
-      this.mesh.material.emissive = isHighlighted ? new THREE.Color(0xffff00) : this.originalColor;
-      this.mesh.material.emissiveIntensity = isHighlighted ? 0.5 : 0.2;
+      this.mesh.material.emissive = isHighlighted ? new THREE.Color(config.color) : this.originalColor;
+      this.mesh.material.emissiveIntensity = isHighlighted ? config.intensity : this.originalEmissiveIntensity;
     }
   }
   

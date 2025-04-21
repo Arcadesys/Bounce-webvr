@@ -12,6 +12,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { DispenserSequencer } from '../core/sequencer/DispenserSequencer.js';
 import { PatternEditor } from '../ui/PatternEditor.js';
+import { VisualConfig } from '../core/config/visualConfig.js';
 
 export class Game {
   constructor(canvas) {
@@ -42,6 +43,22 @@ export class Game {
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x000000);
     
+    // Create mirror-like background plane
+    const planeGeometry = new THREE.PlaneGeometry(100, 100);
+    const planeMaterial = new THREE.MeshPhysicalMaterial({
+      color: 0x000000,      // Pure black base
+      metalness: 1.0,       // Full metal
+      roughness: 0.0,       // Perfect mirror
+      envMapIntensity: 2.0, // Strong environment reflections
+      clearcoat: 0.0,       // No clearcoat (interferes with perfect reflection)
+      reflectivity: 1.0     // Maximum reflectivity
+    });
+    const backgroundPlane = new THREE.Mesh(planeGeometry, planeMaterial);
+    backgroundPlane.position.z = -3;        // Push back slightly
+    backgroundPlane.position.y = -0.5;      // Lower slightly below play area
+    backgroundPlane.rotation.x = -Math.PI * 0.1; // Slight upward tilt to catch reflections
+    this.scene.add(backgroundPlane);
+    
     // Camera setup
     this.camera = new THREE.PerspectiveCamera(
       75,
@@ -49,8 +66,8 @@ export class Game {
       0.1,
       100
     );
-    this.camera.position.set(0, 1.5, 12);
-    this.camera.lookAt(0, 0, 0);
+    this.camera.position.set(0, 2.5, 12);    // Adjusted camera height
+    this.camera.lookAt(0, -0.5, 0);          // Look slightly down
     
     // Renderer setup
     this.renderer = new THREE.WebGLRenderer({
@@ -69,27 +86,27 @@ export class Game {
     
     const bloomPass = new UnrealBloomPass(
       new THREE.Vector2(window.innerWidth, window.innerHeight),
-      0.8,  // strength - reduced from 1.5
-      0.3,  // radius - reduced from 0.4
-      0.9   // threshold - increased from 0.85
+      VisualConfig.bloom.strength,
+      VisualConfig.bloom.radius,
+      VisualConfig.bloom.threshold
     );
     this.composer.addPass(bloomPass);
     
-    // Lighting
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+    // Minimal ambient light
+    const ambientLight = new THREE.AmbientLight(
+      0xffffff, 
+      VisualConfig.lighting.ambient.intensity
+    );
     this.scene.add(ambientLight);
     
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
-    directionalLight.position.set(10, 20, 15);
-    directionalLight.castShadow = true;
-    directionalLight.shadow.mapSize.width = 2048;
-    directionalLight.shadow.mapSize.height = 2048;
-    this.scene.add(directionalLight);
-
-    // Add a second directional light from another angle
-    const secondaryLight = new THREE.DirectionalLight(0xffffff, 0.5);
-    secondaryLight.position.set(-10, 15, -15);
-    this.scene.add(secondaryLight);
+    // Add point light that follows the camera
+    this.cameraLight = new THREE.PointLight(
+      0xffffff, 
+      VisualConfig.lighting.camera.intensity,
+      VisualConfig.lighting.camera.distance
+    );
+    this.camera.add(this.cameraLight);
+    this.scene.add(this.camera);
     
     // Try to load environment map after a short delay to ensure everything is initialized
     setTimeout(() => {
@@ -123,7 +140,7 @@ export class Game {
     
     // Listen for ball collisions
     window.addEventListener('ballCollision', (event) => {
-      const { velocity, wallLength, position } = event.detail;
+      const { velocity } = event.detail;
       this.audio.playCollisionSound(velocity);
     });
   }
@@ -431,6 +448,11 @@ export class Game {
     const ball = new Ball(position, 0.1, this.physics);
     this.balls.push(ball);
     this.scene.add(ball.mesh);
+    
+    // Add any existing flash effects to the scene
+    ball.flashEffects.forEach(effect => {
+      this.scene.add(effect.mesh);
+    });
   }
   
   createWall(start, end) {
