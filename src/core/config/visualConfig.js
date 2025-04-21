@@ -48,8 +48,8 @@ export const VisualConfig = {
       envMapIntensity: 0.5     // Reduced for less reflection
     },
     highlight: {
-      color: 0xFFFFFF,   // Changed to white
-      intensity: 0.3     // Reduced for subtler highlight
+      color: 0xFFFF00,   // Changed to yellow to match dispenser
+      intensity: 0.5     // Increased to match dispenser
     }
   }
 };

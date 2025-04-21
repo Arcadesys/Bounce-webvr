@@ -152,8 +152,12 @@ export class Game {
     // Initialize selection manager
     this.selectionManager = new SelectionManager();
     this.selectionManager.setSelectionChangeCallback((object, type) => {
-      if (object && type === 'wall') {
-        this.endpointControls.show(object);
+      if (object) {
+        if (type === 'wall') {
+          this.endpointControls.show(object);
+        } else {
+          this.endpointControls.hide();
+        }
         this.contextualMenu.show(object.mesh.position, object.mesh);
       } else {
         this.endpointControls.hide();
@@ -166,8 +170,18 @@ export class Game {
     this.contextualMenu.setCallbacks({
       onDelete: () => {
         const selection = this.selectionManager.getSelection();
-        if (selection.object && selection.type === 'wall') {
-          this.deleteWall(selection.object);
+        if (selection.object) {
+          if (selection.type === 'wall') {
+            this.deleteWall(selection.object);
+          } else if (selection.type === 'dispenser') {
+            const dispenser = selection.object;
+            const index = this.dispensers.indexOf(dispenser);
+            if (index > -1) {
+              dispenser.dispose(this.scene);
+              this.dispensers.splice(index, 1);
+              this.sequencer.removeDispenser(dispenser.id);
+            }
+          }
         }
       },
       onChangeMaterial: () => {

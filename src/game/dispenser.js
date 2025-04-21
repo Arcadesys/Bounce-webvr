@@ -27,6 +27,10 @@ export class Dispenser {
     this.mesh.castShadow = true;
     this.mesh.receiveShadow = true;
     
+    // Store original color for highlight effect
+    this.originalColor = material.color.clone();
+    this.originalEmissiveIntensity = 0.2;
+    
     // Store reference to mesh in userData for selection
     this.mesh.userData.dispenser = this;
     this.mesh.userData.id = this.id;
@@ -93,6 +97,14 @@ export class Dispenser {
     // Update visual appearance
     this.mesh.material.emissive.setHex(isSequenced ? 0x444444 : 0x222222);
     this.mesh.material.emissiveIntensity = isSequenced ? 0.2 : 0.1;
+  }
+  
+  highlight(isHighlighted) {
+    if (this.isHighlighted !== isHighlighted) {
+      this.isHighlighted = isHighlighted;
+      this.mesh.material.emissive = isHighlighted ? new THREE.Color(0xFFFF00) : this.originalColor;
+      this.mesh.material.emissiveIntensity = isHighlighted ? 0.5 : this.originalEmissiveIntensity;
+    }
   }
   
   dispose(scene) {
