@@ -1,12 +1,12 @@
 import * as CANNON from 'cannon-es';
 import * as THREE from 'three';
-import { VisualConfig, getVelocityFactor, getOscillatingIntensity } from '../core/config/visualConfig.js';
+import { VisualConfig, getVelocityFactor, getOscillatingIntensity, getPulseIntensity } from '../core/config/visualConfig.js';
 
 class FlashEffect {
   constructor(position, intensity) {
     const geometry = new THREE.SphereGeometry(0.2, 32, 32);
     const material = new THREE.MeshBasicMaterial({
-      color: new THREE.Color(1, 0.8, 0.2),
+      color: new THREE.Color(VisualConfig.ball.pulse.color),
       transparent: true,
       opacity: 1
     });
@@ -84,6 +84,7 @@ export class Ball {
     this.isGlowing = false;
     this.glowStartTime = 0;
     this.GLOW_DURATION = VisualConfig.ball.collision.flashDuration;
+    this.pulseStartTime = performance.now();
     
     // Add to world
     world.addBody(this.body);
@@ -169,15 +170,31 @@ export class Ball {
   }
   
   update() {
-    // Update visual position to match physics
+    // Update physics position
     this.mesh.position.copy(this.body.position);
     this.mesh.quaternion.copy(this.body.quaternion);
     
     // Update flash effects
     this.flashEffects = this.flashEffects.filter(effect => !effect.update());
     
-    // Update sparkle effect
-    this.updateSparkle();
+    // Update pulse effect
+    if (VisualConfig.ball.pulse.enabled) {
+      const elapsed = performance.now() - this.pulseStartTime;
+      const t = (elapsed % VisualConfig.ball.pulse.duration) / VisualConfig.ball.pulse.duration;
+      this.mesh.material.emissiveIntensity = getPulseIntensity(t);
+    }
+    
+    // Update collision glow
+    if (this.isGlowing) {
+      const elapsed = performance.now() - this.glowStartTime;
+      if (elapsed > this.GLOW_DURATION) {
+        this.isGlowing = false;
+        this.mesh.material.emissiveIntensity = this.originalEmissiveIntensity;
+      } else {
+        const t = elapsed / this.GLOW_DURATION;
+        this.mesh.material.emissiveIntensity = this.originalEmissiveIntensity * (1 - t);
+      }
+    }
     
     // Check if ball is out of viewport bounds
     const viewportBounds = {
