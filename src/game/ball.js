@@ -181,22 +181,38 @@ export class Ball {
     
     // Check if ball is out of viewport bounds
     const viewportBounds = {
-      left: -10,
-      right: 10,
-      top: 10,
-      bottom: -10
+      left: -50,  // Much wider bounds
+      right: 50,
+      top: 50,
+      bottom: -50
     };
     
     const pos = this.body.position;
     
+    // Track stuck time
+    if (!this.stuckStartTime) {
+      this.stuckStartTime = performance.now();
+    }
+    
     // Check if ball has extremely low velocity and is near the bottom
     const isStuck = this.body.velocity.lengthSquared() < 0.0001 && pos.y < -9;
+    const stuckDuration = performance.now() - this.stuckStartTime;
     
+    // Only remove if stuck for more than 5 seconds
+    if (isStuck && stuckDuration > 5000) {
+      return true; // Signal that ball should be removed
+    }
+    
+    // Reset stuck timer if ball moves
+    if (!isStuck) {
+      this.stuckStartTime = performance.now();
+    }
+    
+    // Only remove if ball is very far out of bounds
     if (pos.x < viewportBounds.left ||
         pos.x > viewportBounds.right ||
         pos.y < viewportBounds.bottom ||
-        pos.y > viewportBounds.top ||
-        isStuck) {
+        pos.y > viewportBounds.top) {
       return true; // Signal that ball should be removed
     }
     

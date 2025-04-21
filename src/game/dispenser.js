@@ -14,12 +14,12 @@ export class Dispenser {
     // Create visual mesh for dispenser
     const geometry = new THREE.BoxGeometry(0.3, 0.3, 0.3);
     const material = new THREE.MeshStandardMaterial({
-      color: 0x666666,
-      roughness: 0.5,
-      metalness: 0.7,
-      emissive: new THREE.Color(0x222222),
-      emissiveIntensity: 0.1,
-      envMapIntensity: 0.5
+      color: 0x888888,
+      roughness: 0.3,
+      metalness: 0.8,
+      emissive: new THREE.Color(0x444444),
+      emissiveIntensity: 0.2,
+      envMapIntensity: 0.8
     });
     
     this.mesh = new THREE.Mesh(geometry, material);
